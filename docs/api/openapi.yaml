@@ -1,0 +1,1576 @@
+openapi: 3.1.0
+
+info:
+  title: BiletFlow API
+  version: 0.1.0
+  description: |
+    The agreement between the FastAPI backend, the web app, and the mobile app.
+    Derived from `docs/BiletFlow_SRS_Initial_Draft.pdf` (SRS v0.3).
+
+    ## What is covered
+
+    Only the core end-to-end flow that SRS §13.4 says takes priority: create an event,
+    share a campaign QR, apply a promo code, pick a ticket, simulated checkout, issue the
+    ticket, request support, verify entry.
+
+    ## Not here yet — add when you reach them
+
+    Assigned seating (§4.3.1) and calendar export (§4.11) are bonus features (§8).
+    Organizer analytics (§4.15), event history (§4.16), and the admin portal (§4.12) are
+    required but scheduled for Week 9 — add them then rather than guessing now.
+
+    ## Rules
+
+    - Money is an integer in **tiyin** (1 KZT = 100), never a float.
+    - Payments and refunds always return `simulated` as true. Sandbox or labelled
+      simulation only, never presented as real money (§4.6).
+    - Tickets are issued only after payment succeeds. Failed or abandoned checkout issues
+      nothing (§4.6).
+    - The server calculates discounts. The client is never trusted with an amount (§4.14).
+    - Timestamps are RFC 3339. Events also carry an IANA time zone (§7).
+    - Errors return an `error` object with `code` and `message`.
+
+servers:
+  - url: http://localhost:8000/v1
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+  - name: Events
+  - name: Tickets & Campaigns
+  - name: Checkout
+  - name: My Orders
+  - name: Organizer Sales
+  - name: Check-In
+  - name: Support
+
+paths:
+
+  # ------------------------------------------------------------------- Auth
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register (SRS §4.1)
+      description: Creates an unverified account and sends a verification email.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, fullName]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                fullName: { type: string }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /auth/verify-email:
+    post:
+      tags: [Auth]
+      summary: Verify an email address (SRS §4.1)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200':
+          description: Verified and signed in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tokens' }
+        '410': { $ref: '#/components/responses/Error' }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Sign in (SRS §4.1)
+      description: Used by the web app and by the Event Admin mobile app.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: Signed in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tokens' }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Get a new access token (SRS §4.1)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: New tokens
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tokens' }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /me:
+    get:
+      tags: [Auth]
+      summary: Get the signed-in user (SRS §4.1)
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Sign out (SRS §4.1)
+      description: Revokes the refresh token.
+      responses:
+        '204':
+          description: Signed out
+
+  /auth/password/forgot:
+    post:
+      tags: [Auth]
+      summary: Request a password reset (SRS §4.1)
+      description: Always returns 202, so it cannot be used to find out which emails are registered.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '202':
+          description: Accepted
+
+  /auth/password/reset:
+    post:
+      tags: [Auth]
+      summary: Set a new password (SRS §4.1)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: { type: string }
+                password: { type: string, minLength: 8 }
+      responses:
+        '204':
+          description: Password changed; other sessions are signed out
+        '410': { $ref: '#/components/responses/Error' }
+
+  /me/organizer-profile:
+    put:
+      tags: [Auth]
+      summary: Create or update the organizer profile (SRS §4.1)
+      description: Having a profile is what makes a user an organizer.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [displayName, contactEmail]
+              properties:
+                displayName: { type: string }
+                description: { type: string }
+                contactEmail: { type: string, format: email }
+                contactPhone: { type: string }
+      responses:
+        '200':
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /me/identity-verification:
+    post:
+      tags: [Auth]
+      summary: Submit identity verification (SRS §3.2 step 2)
+      description: |
+        Activation step 2. Simulated for this project — real KYC is out of scope (SRS §8).
+        No real identity documents are stored.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [legalName]
+              properties:
+                legalName: { type: string }
+                documentType: { type: string, enum: [individual_id, business_registration] }
+      responses:
+        '202':
+          description: Submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [pending, verified, rejected] }
+                  simulated: { type: boolean, const: true }
+
+  /me/payout-account:
+    put:
+      tags: [Auth]
+      summary: Connect a payout account (SRS §3.2 step 4)
+      description: |
+        Activation step 4. Sandbox token only — the platform never stores bank
+        credentials or card data (SRS §7).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accountHolderName, sandboxAccountToken]
+              properties:
+                accountHolderName: { type: string }
+                sandboxAccountToken: { type: string }
+      responses:
+        '200':
+          description: Connected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [pending, connected, rejected] }
+                  maskedAccount: { type: string }
+                  simulated: { type: boolean, const: true }
+
+  # ----------------------------------------------------------------- Events
+
+  /events:
+    get:
+      tags: [Events]
+      summary: Browse published events
+      description: Public events only. Unlisted events are reachable by link but never listed (SRS §4.2).
+      security: []
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: city, in: query, schema: { type: string } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Events
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventList' }
+
+  /events/{eventId}:
+    get:
+      tags: [Events]
+      summary: Get one event page
+      description: |
+        Pass `campaignToken` when the visitor arrived through a Campaign QR Code, so the
+        promo code is applied automatically after server-side validation (SRS §4.14).
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - { name: campaignToken, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Event
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /organizer/events:
+    get:
+      tags: [Events]
+      summary: List my events (SRS §4.16)
+      parameters:
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/EventStatus' } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Events
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventList' }
+    post:
+      tags: [Events]
+      summary: Create an event (SRS §4.2)
+      description: Created as a draft so the organizer can preview it before publishing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EventInput' }
+      responses:
+        '201':
+          description: Draft created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /organizer/events/{eventId}:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    get:
+      tags: [Events]
+      summary: Get one of my events (SRS §4.2)
+      description: Includes drafts, which the public endpoint does not. Also serves the preview.
+      responses:
+        '200':
+          description: Event
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [Events]
+      summary: Edit an event (SRS §4.2)
+      description: |
+        Send only the fields you are changing. Capacity may not drop below the number of
+        tickets already sold.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EventPatch' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /organizer/events/{eventId}/publish:
+    post:
+      tags: [Events]
+      summary: Publish an event (SRS §4.2)
+      description: |
+        Needs at least one ticket type. Publishing a paid event does **not** open paid
+        sales — that needs activation (SRS §4.5).
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Published
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /organizer/events/{eventId}/cancel:
+    post:
+      tags: [Events]
+      summary: Cancel an event (SRS §4.2)
+      description: Stops sales and notifies attendees. Refunds are issued separately (SRS §4.9).
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+      responses:
+        '200':
+          description: Cancelled
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+
+  /organizer/events/{eventId}/activation:
+    get:
+      tags: [Events]
+      summary: Get the paid-sales activation checklist (SRS §3.2, §4.5)
+      description: Paid tickets cannot be bought until every step is done. Applies to this event only.
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Checklist
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Activation' }
+
+  /organizer/events/{eventId}/activation/pay-fee:
+    post:
+      tags: [Events]
+      summary: Pay the Paid Sales Activation Fee (SRS §3.2)
+      description: One-time fee per event. Simulated, so the response is marked as such.
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Fee recorded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payment' }
+        '402': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /organizer/events/{eventId}/activation/accept-terms:
+    post:
+      tags: [Events]
+      summary: Accept the paid-event terms (SRS §3.2 step 5)
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [termsVersion]
+              properties:
+                termsVersion: { type: string }
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Activation' }
+
+  # ---------------------------------------------------- Tickets & Campaigns
+
+  /organizer/events/{eventId}/ticket-types:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    get:
+      tags: [Tickets & Campaigns]
+      summary: List ticket types (SRS §4.3)
+      responses:
+        '200':
+          description: Ticket types
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/TicketType' }
+    post:
+      tags: [Tickets & Campaigns]
+      summary: Create a ticket type (SRS §4.3)
+      description: A price of 0 makes it free. Adding a paid type is what makes the event eligible for activation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TicketTypeInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketType' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /organizer/events/{eventId}/ticket-types/{ticketTypeId}:
+    patch:
+      tags: [Tickets & Campaigns]
+      summary: Update a ticket type (SRS §4.3)
+      description: |
+        Send only the fields you are changing. Set `hidden` to withdraw a type from sale
+        without deleting it. Quantity may not drop below the number already sold or held.
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - { name: ticketTypeId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TicketTypePatch' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketType' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /organizer/events/{eventId}/campaigns:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    get:
+      tags: [Tickets & Campaigns]
+      summary: List promo campaigns (SRS §4.14)
+      responses:
+        '200':
+          description: Campaigns
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Campaign' }
+    post:
+      tags: [Tickets & Campaigns]
+      summary: Create a promo campaign (SRS §4.14)
+      description: |
+        The server generates the promo code and the Campaign QR Code. The QR encodes a
+        trackable event link carrying an opaque token — never a price or discount value.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CampaignInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Campaign' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /organizer/campaigns/{campaignId}/qr:
+    get:
+      tags: [Tickets & Campaigns]
+      summary: Download the Campaign QR image (SRS §4.14)
+      description: |
+        Must look and behave differently from an admission-ticket QR code. The check-in
+        endpoints must never accept it as entry.
+      parameters:
+        - { name: campaignId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: PNG image
+          content:
+            image/png:
+              schema: { type: string, format: binary }
+
+  # --------------------------------------------------------------- Checkout
+
+  /checkout/sessions:
+    post:
+      tags: [Checkout]
+      summary: Start checkout and hold the tickets (SRS §4.6)
+      description: |
+        Holding is atomic — two people can never buy the same last ticket. The hold is
+        released when the session expires or is abandoned. This creates no order and
+        issues no tickets.
+      security:
+        - bearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CheckoutInput' }
+      responses:
+        '201':
+          description: Session opened and tickets held
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckoutSession' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /checkout/sessions/{sessionId}:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    get:
+      tags: [Checkout]
+      summary: Get a checkout session (SRS §4.6)
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: Session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckoutSession' }
+        '410': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Checkout]
+      summary: Abandon checkout and release the hold (SRS §4.6)
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '204':
+          description: Abandoned
+
+  /checkout/sessions/{sessionId}/promo-code:
+    put:
+      tags: [Checkout]
+      summary: Apply a promo code (SRS §4.14)
+      description: |
+        Send a typed `code` or the `campaignToken` from a Campaign QR link. The server
+        validates it and calculates the discount; expired, disabled, exhausted, or
+        inapplicable codes are rejected with a clear message. Redemption limits are
+        enforced atomically.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      security:
+        - bearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code: { type: string }
+                campaignToken: { type: string }
+      responses:
+        '200':
+          description: Applied, with the updated total
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckoutSession' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /checkout/sessions/{sessionId}/confirm:
+    post:
+      tags: [Checkout]
+      summary: Confirm checkout and create the order (SRS §4.4, §4.6)
+      description: |
+        Free session (total 0) creates a zero-value order and issues tickets straight away,
+        with no payment details required. Paid session runs the simulated payment and
+        issues tickets **only** if it succeeds.
+
+        Send `Idempotency-Key` so a retry cannot create a second order.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string }
+      security:
+        - bearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                paymentMethodToken:
+                  type: string
+                  description: Sandbox token. Required only when the total is above zero. Never raw card data.
+                contactEmail:
+                  type: string
+                  format: email
+                  description: Where to send the tickets when checking out without an account.
+      responses:
+        '201':
+          description: Order created and tickets issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '402': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '410': { $ref: '#/components/responses/Error' }
+
+  # -------------------------------------------------------------- My Orders
+
+  /me/orders:
+    get:
+      tags: [My Orders]
+      summary: List my orders (SRS §4.9)
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Orders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Order' }
+                  total: { type: integer }
+
+  /me/orders/{orderId}:
+    get:
+      tags: [My Orders]
+      summary: Get one order (SRS §4.9)
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Order
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /me/tickets/{ticketId}:
+    get:
+      tags: [My Orders]
+      summary: Get one ticket (SRS §4.7)
+      parameters:
+        - $ref: '#/components/parameters/TicketId'
+      responses:
+        '200':
+          description: Ticket
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ticket' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /me/tickets/{ticketId}/pdf:
+    get:
+      tags: [My Orders]
+      summary: Download the printable ticket PDF (SRS §4.7)
+      description: |
+        Generated on the server from the ticket record, so the printed and digital copies
+        share one ticket identifier and never become two admissions. No card details on it.
+        The QR must stay scannable on A4 in colour or grayscale.
+      parameters:
+        - $ref: '#/components/parameters/TicketId'
+      responses:
+        '200':
+          description: PDF
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        '409': { $ref: '#/components/responses/Error' }
+
+  # -------------------------------------------------------- Organizer Sales
+
+  /organizer/events/{eventId}/orders:
+    get:
+      tags: [Organizer Sales]
+      summary: List orders for an event (SRS §4.9)
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Orders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Order' }
+                  total: { type: integer }
+
+  /organizer/events/{eventId}/attendees:
+    get:
+      tags: [Organizer Sales]
+      summary: List attendees for an event (SRS §4.4, §4.9)
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - { name: q, in: query, schema: { type: string } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Attendees
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Attendee' }
+                  total: { type: integer }
+
+  /organizer/orders/{orderId}/refund:
+    post:
+      tags: [Organizer Sales]
+      summary: Refund an order in full (SRS §4.9)
+      description: |
+        Full refunds only in the MVP. Refunded tickets become invalid and the attendee is
+        notified. Simulated, and written to the audit log.
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+      responses:
+        '200':
+          description: Refunded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Refund' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /organizer/events/{eventId}/staff:
+    post:
+      tags: [Organizer Sales]
+      summary: Assign an Event Admin to the event (SRS §1.2)
+      description: This assignment is what makes the event appear in that person's mobile app.
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+                canReverseCheckIn: { type: boolean, default: false }
+      responses:
+        '201':
+          description: Assigned
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StaffAssignment' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  # --------------------------------------------------------------- Check-In
+
+  /checkin/events:
+    get:
+      tags: [Check-In]
+      summary: List the events I can check in (SRS §4.8)
+      description: Only events this Event Admin is assigned to. First screen of the mobile app.
+      responses:
+        '200':
+          description: Events
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventList' }
+        '403': { $ref: '#/components/responses/Error' }
+
+  /checkin/events/{eventId}/verify:
+    post:
+      tags: [Check-In]
+      summary: Check a scanned QR without checking anybody in (SRS §4.8)
+      description: |
+        Returns a clear result for the scanner screen. A Campaign QR Code returns
+        `rejected_campaign_qr` — it is a promo link, never admission (§4.14).
+        Online only; offline sync is deferred. Should answer within about two seconds.
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qrPayload]
+              properties:
+                qrPayload: { type: string }
+      responses:
+        '200':
+          description: Result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VerifyResult' }
+
+  /checkin/events/{eventId}/check-ins:
+    post:
+      tags: [Check-In]
+      summary: Check an attendee in (SRS §4.8)
+      description: |
+        Send the scanned `qrPayload`, or a `ticketId` when the attendee was found by manual
+        search. A second attempt on the same ticket returns 409 with `already_used` and the
+        original check-in.
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                qrPayload: { type: string }
+                ticketId: { type: string }
+      responses:
+        '201':
+          description: Checked in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckIn' }
+        '409':
+          description: Already used, cancelled, refunded, or wrong event
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VerifyResult' }
+
+  /checkin/check-ins/{checkInId}:
+    delete:
+      tags: [Check-In]
+      summary: Undo an accidental check-in (SRS §4.8)
+      description: Only for staff allowed to reverse. Afterwards the ticket can be checked in again.
+      parameters:
+        - { name: checkInId, in: path, required: true, schema: { type: string } }
+      responses:
+        '204':
+          description: Reversed
+        '403': { $ref: '#/components/responses/Error' }
+
+  /checkin/events/{eventId}/attendees:
+    get:
+      tags: [Check-In]
+      summary: Search attendees manually (SRS §4.8)
+      description: Fallback when a QR code will not scan. Also returns the registered and checked-in counts.
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 2 } }
+      responses:
+        '200':
+          description: Matches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Attendee' }
+                  registered: { type: integer }
+                  checkedIn: { type: integer }
+
+  # ---------------------------------------------------------------- Support
+
+  /support/cases:
+    get:
+      tags: [Support]
+      summary: List my support cases (SRS §4.13)
+      description: |
+        A user only ever sees cases they are allowed to see — checked by role **and** by
+        their relationship to the event, order, or ticket.
+      parameters:
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/CaseStatus' } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Cases
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/SupportCase' }
+                  total: { type: integer }
+    post:
+      tags: [Support]
+      summary: Open a support case (SRS §4.13)
+      description: |
+        Opened from an event, order, or ticket page. Send whichever ids you have and the
+        server attaches the rest as context.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [category, subject, message]
+              properties:
+                category: { $ref: '#/components/schemas/CaseCategory' }
+                subject: { type: string }
+                message: { type: string }
+                eventId: { type: string }
+                orderId: { type: string }
+                ticketId: { type: string }
+      responses:
+        '201':
+          description: Opened
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportCase' }
+
+  /support/cases/{caseId}:
+    parameters:
+      - $ref: '#/components/parameters/CaseId'
+    get:
+      tags: [Support]
+      summary: Read a case and its messages (SRS §4.13)
+      responses:
+        '200':
+          description: Case
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportCase' }
+        '403': { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [Support]
+      summary: Change case status or assignee (SRS §4.13)
+      description: Authorized staff only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { $ref: '#/components/schemas/CaseStatus' }
+                assigneeUserId: { type: string }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportCase' }
+        '403': { $ref: '#/components/responses/Error' }
+
+  /support/cases/{caseId}/messages:
+    post:
+      tags: [Support]
+      summary: Post a message to a case (SRS §4.13)
+      description: |
+        Asynchronous chat. Clients poll the case with a periodic refresh — WebSockets,
+        typing indicators, and presence are not required for the MVP.
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string }
+      responses:
+        '201':
+          description: Posted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportMessage' }
+        '403': { $ref: '#/components/responses/Error' }
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    EventId:
+      name: eventId
+      in: path
+      required: true
+      schema: { type: string }
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema: { type: string }
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema: { type: string }
+    TicketId:
+      name: ticketId
+      in: path
+      required: true
+      schema: { type: string }
+    CaseId:
+      name: caseId
+      in: path
+      required: true
+      schema: { type: string }
+
+  responses:
+    Error:
+      description: Request failed
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Stable code such as sold_out or promo_code_expired.
+            message:
+              type: string
+              description: Human-readable text, translated for the user.
+
+    Money:
+      type: object
+      description: Integer amount in tiyin. 500000 means 5000.00 KZT. Never a float.
+      required: [amount, currency]
+      properties:
+        amount: { type: integer }
+        currency: { type: string, enum: [KZT], default: KZT }
+
+    User:
+      type: object
+      required: [id, email, emailVerified, roles]
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        emailVerified: { type: boolean }
+        fullName: { type: string }
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [attendee, organizer, event_admin, platform_admin]
+
+    Tokens:
+      type: object
+      required: [accessToken, refreshToken, user]
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        expiresIn: { type: integer, description: Access token lifetime in seconds. }
+        user: { $ref: '#/components/schemas/User' }
+
+    EventStatus:
+      type: string
+      enum: [draft, upcoming, active, completed, cancelled]
+
+    EventInput:
+      type: object
+      required: [title, startsAt, endsAt, timeZone, venueName, city]
+      properties:
+        title: { type: string }
+        description: { type: string }
+        category: { type: string }
+        imageUrl: { type: string, format: uri }
+        venueName: { type: string }
+        address: { type: string }
+        city: { type: string }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        timeZone: { type: string, description: IANA zone such as Asia/Almaty. }
+        visibility: { type: string, enum: [public, unlisted, private], default: public }
+        registrationClosesAt: { type: string, format: date-time }
+        capacity: { type: integer }
+        refundPolicy: { type: string }
+
+    EventPatch:
+      type: object
+      description: Partial update. Every field is optional; omitted fields are left alone.
+      properties:
+        title: { type: string }
+        description: { type: string }
+        category: { type: string }
+        imageUrl: { type: string, format: uri }
+        venueName: { type: string }
+        address: { type: string }
+        city: { type: string }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        timeZone: { type: string }
+        visibility: { type: string, enum: [public, unlisted, private] }
+        registrationClosesAt: { type: string, format: date-time }
+        capacity: { type: integer }
+        refundPolicy: { type: string }
+
+    Event:
+      allOf:
+        - $ref: '#/components/schemas/EventInput'
+        - type: object
+          required: [id, status, paidSalesActive]
+          properties:
+            id: { type: string }
+            organizerId: { type: string }
+            organizerName: { type: string }
+            status: { $ref: '#/components/schemas/EventStatus' }
+            paidSalesActive:
+              type: boolean
+              description: Whether paid tickets can actually be bought (SRS §4.5).
+            ticketTypes:
+              type: array
+              items: { $ref: '#/components/schemas/TicketType' }
+            appliedPromo:
+              $ref: '#/components/schemas/AppliedPromo'
+
+    EventList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Event' }
+        total: { type: integer }
+
+    TicketTypeInput:
+      type: object
+      required: [name, price, quantity]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        price: { $ref: '#/components/schemas/Money' }
+        quantity: { type: integer, minimum: 0 }
+        salesStartAt: { type: string, format: date-time }
+        salesEndAt: { type: string, format: date-time }
+        maxPerOrder: { type: integer, description: Limit per order (SRS §4.3). }
+        hidden: { type: boolean, default: false }
+
+    TicketTypePatch:
+      type: object
+      description: Partial update. Every field is optional; omitted fields are left alone.
+      properties:
+        name: { type: string }
+        description: { type: string }
+        price: { $ref: '#/components/schemas/Money' }
+        quantity: { type: integer, minimum: 0 }
+        salesStartAt: { type: string, format: date-time }
+        salesEndAt: { type: string, format: date-time }
+        maxPerOrder: { type: integer }
+        hidden: { type: boolean }
+
+    TicketType:
+      allOf:
+        - $ref: '#/components/schemas/TicketTypeInput'
+        - type: object
+          required: [id, available, sold]
+          properties:
+            id: { type: string }
+            eventId: { type: string }
+            onSale: { type: boolean }
+            available: { type: integer }
+            held: { type: integer, description: Reserved right now by open checkout sessions. }
+            sold: { type: integer }
+            refunded: { type: integer }
+            checkedIn: { type: integer }
+
+    Activation:
+      type: object
+      description: The five steps from SRS §3.2.
+      required: [eventId, active, steps]
+      properties:
+        eventId: { type: string }
+        active: { type: boolean }
+        activationFee: { $ref: '#/components/schemas/Money' }
+        steps:
+          type: object
+          properties:
+            hasPaidTicketType: { type: boolean }
+            identityVerified: { type: boolean }
+            feePaid: { type: boolean }
+            payoutAccountConnected: { type: boolean }
+            termsAccepted: { type: boolean }
+        suspendedReason:
+          type: string
+          description: Set when a Platform Admin suspends paid sales (SRS §4.5).
+
+    CampaignInput:
+      type: object
+      required: [name, discountType]
+      properties:
+        name: { type: string }
+        discountType: { type: string, enum: [percentage, fixed_amount] }
+        percentOff: { type: number, minimum: 0, maximum: 100 }
+        amountOff: { $ref: '#/components/schemas/Money' }
+        validFrom: { type: string, format: date-time }
+        validUntil: { type: string, format: date-time }
+        maxRedemptions: { type: integer, description: Enforced atomically on the server. }
+        disabled: { type: boolean, default: false }
+
+    Campaign:
+      allOf:
+        - $ref: '#/components/schemas/CampaignInput'
+        - type: object
+          required: [id, eventId, code, campaignUrl]
+          properties:
+            id: { type: string }
+            eventId: { type: string }
+            code: { type: string, description: Server-generated promo code. }
+            campaignUrl:
+              type: string
+              format: uri
+              description: The trackable link inside the QR image. Carries an opaque token only.
+            qrImageUrl: { type: string, format: uri }
+            redemptions: { type: integer }
+            ticketsSold: { type: integer }
+            revenue: { $ref: '#/components/schemas/Money' }
+
+    AppliedPromo:
+      type: object
+      required: [campaignId, code, discount]
+      properties:
+        campaignId: { type: string }
+        code: { type: string }
+        discount:
+          $ref: '#/components/schemas/Money'
+          description: Calculated by the server, never sent by the client.
+
+    CheckoutInput:
+      type: object
+      required: [eventId, items]
+      properties:
+        eventId: { type: string }
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [ticketTypeId, quantity]
+            properties:
+              ticketTypeId: { type: string }
+              quantity: { type: integer, minimum: 1 }
+        attendees:
+          type: array
+          description: One per ticket. Keep it minimal (SRS §4.15).
+          items: { $ref: '#/components/schemas/AttendeeInput' }
+        campaignToken: { type: string }
+
+    CheckoutSession:
+      type: object
+      required: [id, eventId, status, total, expiresAt]
+      properties:
+        id: { type: string }
+        eventId: { type: string }
+        status: { type: string, enum: [open, confirmed, expired, abandoned] }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              ticketTypeId: { type: string }
+              ticketTypeName: { type: string }
+              quantity: { type: integer }
+              unitPrice: { $ref: '#/components/schemas/Money' }
+        subtotal: { $ref: '#/components/schemas/Money' }
+        discount: { $ref: '#/components/schemas/Money' }
+        processingFee: { $ref: '#/components/schemas/Money' }
+        total: { $ref: '#/components/schemas/Money' }
+        appliedPromo: { $ref: '#/components/schemas/AppliedPromo' }
+        requiresPayment:
+          type: boolean
+          description: False when the total is zero. A free registration needs no payment details.
+        expiresAt:
+          type: string
+          format: date-time
+          description: When the hold is released.
+
+    AttendeeInput:
+      type: object
+      required: [fullName, email]
+      properties:
+        fullName: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string }
+
+    Order:
+      type: object
+      required: [id, eventId, status, total]
+      properties:
+        id: { type: string }
+        orderNumber: { type: string }
+        eventId: { type: string }
+        eventTitle: { type: string }
+        status: { type: string, enum: [confirmed, cancelled, refunded] }
+        subtotal: { $ref: '#/components/schemas/Money' }
+        discount: { $ref: '#/components/schemas/Money' }
+        total: { $ref: '#/components/schemas/Money' }
+        appliedPromo: { $ref: '#/components/schemas/AppliedPromo' }
+        tickets:
+          type: array
+          items: { $ref: '#/components/schemas/Ticket' }
+        payment: { $ref: '#/components/schemas/Payment' }
+        createdAt: { type: string, format: date-time }
+
+    Ticket:
+      type: object
+      description: The one true ticket record. The PDF is generated from this, so paper and phone share one identifier.
+      required: [id, ticketNumber, status, qrPayload]
+      properties:
+        id: { type: string }
+        ticketNumber: { type: string, description: Shown to the attendee and printed on the PDF. }
+        orderId: { type: string }
+        eventId: { type: string }
+        eventTitle: { type: string }
+        eventStartsAt: { type: string, format: date-time }
+        venueName: { type: string }
+        ticketTypeName: { type: string }
+        attendee: { $ref: '#/components/schemas/AttendeeInput' }
+        status: { type: string, enum: [valid, checked_in, cancelled, refunded] }
+        qrPayload:
+          type: string
+          description: Signed, tamper-resistant payload inside the QR. This is what the scanner sends back.
+        pdfUrl: { type: string, format: uri }
+
+    Attendee:
+      type: object
+      required: [ticketId, ticketNumber, fullName, status]
+      properties:
+        ticketId: { type: string }
+        ticketNumber: { type: string }
+        fullName: { type: string }
+        email: { type: string, format: email }
+        ticketTypeName: { type: string }
+        status: { type: string, enum: [valid, checked_in, cancelled, refunded] }
+        checkedInAt: { type: string, format: date-time }
+
+    Payment:
+      type: object
+      required: [id, amount, status, simulated]
+      properties:
+        id: { type: string }
+        purpose: { type: string, enum: [ticket_order, activation_fee] }
+        amount: { $ref: '#/components/schemas/Money' }
+        status: { type: string, enum: [succeeded, failed, refunded] }
+        simulated:
+          type: boolean
+          const: true
+          description: Always true. Interfaces must label this as a demonstration, not real money.
+        createdAt: { type: string, format: date-time }
+
+    Refund:
+      type: object
+      required: [id, orderId, amount, simulated]
+      properties:
+        id: { type: string }
+        orderId: { type: string }
+        amount: { $ref: '#/components/schemas/Money' }
+        reason: { type: string }
+        simulated: { type: boolean, const: true }
+        createdAt: { type: string, format: date-time }
+
+    StaffAssignment:
+      type: object
+      required: [id, eventId, email]
+      properties:
+        id: { type: string }
+        eventId: { type: string }
+        userId: { type: string }
+        email: { type: string, format: email }
+        canReverseCheckIn: { type: boolean }
+
+    VerifyResult:
+      type: object
+      required: [result]
+      properties:
+        result:
+          type: string
+          enum: [valid, invalid, cancelled, refunded, already_used, wrong_event, rejected_campaign_qr]
+          description: rejected_campaign_qr means a promo QR was scanned. Never let it in.
+        message: { type: string, description: Text for the scanner screen. }
+        ticket: { $ref: '#/components/schemas/Ticket' }
+        previousCheckIn: { $ref: '#/components/schemas/CheckIn' }
+
+    CheckIn:
+      type: object
+      required: [id, ticketId, checkedInAt]
+      properties:
+        id: { type: string }
+        ticketId: { type: string }
+        ticketNumber: { type: string }
+        attendeeName: { type: string }
+        checkedInAt: { type: string, format: date-time }
+        checkedInByUserId: { type: string }
+
+    CaseStatus:
+      type: string
+      enum: [open, in_progress, waiting_for_customer, resolved]
+
+    CaseCategory:
+      type: string
+      enum: [ticket_delivery, payment, refund, event_information, check_in, account, technical]
+
+    SupportCase:
+      type: object
+      required: [id, category, subject, status]
+      properties:
+        id: { type: string }
+        category: { $ref: '#/components/schemas/CaseCategory' }
+        subject: { type: string }
+        status: { $ref: '#/components/schemas/CaseStatus' }
+        eventId: { type: string }
+        orderId: { type: string }
+        ticketId: { type: string }
+        assigneeUserId: { type: string }
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/SupportMessage' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    SupportMessage:
+      type: object
+      required: [id, body, createdAt]
+      properties:
+        id: { type: string }
+        authorUserId: { type: string }
+        authorName: { type: string }
+        body: { type: string }
+        createdAt: { type: string, format: date-time }
