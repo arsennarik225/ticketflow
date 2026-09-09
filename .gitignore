@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+build/
+.next/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# Test / coverage
+coverage/
+.pytest_cache/
+
+# Mobile
+.expo/
+ios/Pods/
+android/.gradle/
+android/app/build/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
