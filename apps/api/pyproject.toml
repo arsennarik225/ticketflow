@@ -1,0 +1,11 @@
+[project]
+name = "biletflow-api"
+version = "0.2.0"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    # raised inside Starlette's TestClient, not in our code
+    "ignore:The anyio.abc.BlockingPortal alias:DeprecationWarning",
+]

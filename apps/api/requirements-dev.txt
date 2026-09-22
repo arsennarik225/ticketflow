@@ -1,0 +1,6 @@
+# Tests: pytest, the TestClient transport, and contract validation
+-r requirements.txt
+pytest==9.1.1
+httpx2==2.13.0
+jsonschema[format-nongpl]==4.26.0
+openapi-spec-validator==0.9.0

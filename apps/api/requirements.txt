@@ -1,0 +1,15 @@
+# Runtime dependencies (pinned so every machine and the Docker image get the same versions)
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+sqlalchemy==2.0.54
+psycopg[binary]==3.3.6
+pydantic==2.13.5
+pydantic-settings==2.15.0
+email-validator==2.3.0
+pyjwt==2.14.0
+argon2-cffi==25.1.0
+qrcode[pil]==8.2
+pillow==12.3.0
+fpdf2==2.8.8
+pyyaml==6.0.3
+tzdata==2026.4
