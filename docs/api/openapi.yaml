@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: BiletFlow API
-  version: 0.2.0
+  version: 0.3.0
   description: |
     The agreement between the FastAPI backend, the web app, and the mobile app.
     Derived from `docs/BiletFlow_SRS_Initial_Draft.pdf` (SRS v0.3). The backend in
@@ -15,11 +15,16 @@ info:
     campaign QR, apply a promo code, pick a ticket, simulated checkout, issue the ticket,
     request support, verify entry), plus the rest of the required MVP (§8): organizer
     analytics (§4.15), event history (§4.16), and platform administration (§4.12).
-    Calendar export (§4.11, bonus) is included because it was small.
 
-    ## Not here yet
+    Bonus features (§8) are in too: assigned seating with one predefined layout (§4.3.1),
+    calendar export with one-click links (§4.11), offline scanning with later sync, and
+    support-message attachments. GA4 traffic analytics is optional and lives in the web app;
+    support chat uses polling instead of real-time delivery.
 
-    Assigned seating (§4.3.1) is a bonus feature (§8) and is not implemented.
+    ## Languages
+
+    Emails and PDF tickets come in Kazakh, Russian, or English (`kk`, `ru`, `en`, §7): the
+    user's `language`, or the `language` sent at checkout for guests. Default `ru`.
 
     ## Rules
 
@@ -56,6 +61,7 @@ tags:
   - name: Organizer Sales
   - name: Check-In
   - name: Support
+  - name: Seating
   - name: Insights
   - name: Admin
 
@@ -80,6 +86,7 @@ paths:
                 email: { type: string, format: email }
                 password: { type: string, minLength: 8 }
                 fullName: { type: string }
+                language: { $ref: '#/components/schemas/Language' }
       responses:
         '201':
           description: Created
@@ -171,6 +178,26 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/User' }
         '401': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [Auth]
+      summary: Change my name or language
+      description: The language is used for emails and PDF tickets (SRS §7).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fullName: { type: string }
+                language: { $ref: '#/components/schemas/Language' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
         default: { $ref: '#/components/responses/Error' }
 
   /auth/logout:
@@ -772,6 +799,108 @@ paths:
               schema: { type: string, format: binary }
         default: { $ref: '#/components/responses/Error' }
 
+  # ---------------------------------------------------------------- Seating
+
+  /venues:
+    get:
+      tags: [Seating]
+      summary: List the predefined venue layouts (SRS §4.3.1, bonus)
+      security: []
+      responses:
+        '200':
+          description: Layouts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/VenueSummary' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /venues/{venueId}:
+    get:
+      tags: [Seating]
+      summary: Get a layout with every section, row, and seat
+      security: []
+      parameters:
+        - { name: venueId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Venue' }
+        '404': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /organizer/events/{eventId}/seating:
+    put:
+      tags: [Seating]
+      summary: Turn assigned seating on or off for an event (SRS §4.3.1)
+      description: |
+        Pick a layout from `GET /venues` and, optionally, seats to keep out of sale; or send
+        `venueId: null` for general admission. Allowed only before any order or open
+        checkout. The event's venue name, address, and city are set from the layout. Then
+        give each price category a ticket type with `seatCategory` (one type per category).
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [venueId]
+              properties:
+                venueId: { type: [string, 'null'] }
+                blockedSeatIds:
+                  type: array
+                  items: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '409': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /events/{eventId}/seats:
+    get:
+      tags: [Seating]
+      summary: Seat map with live seat status (SRS §4.3.1)
+      description: |
+        For the seat-selection screen; refresh it while the buyer is choosing. Buy the chosen
+        seats with `POST /checkout/sessions` and `seatIds`. Same visibility rules as the event page.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - { name: campaignToken, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SeatMap' }
+        '404': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /organizer/events/{eventId}/seats:
+    get:
+      tags: [Seating]
+      summary: Seat map for the organizer (drafts included)
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SeatMap' }
+        default: { $ref: '#/components/responses/Error' }
+
   # --------------------------------------------------------------- Checkout
 
   /checkout/sessions:
@@ -1253,6 +1382,65 @@ paths:
                   checkedIn: { type: integer }
         default: { $ref: '#/components/responses/Error' }
 
+  /checkin/events/{eventId}/offline-list:
+    get:
+      tags: [Check-In]
+      summary: Download tickets for offline scanning (bonus)
+      description: |
+        Download before the doors open. Offline, a scanned code is valid if it equals a
+        `qrPayload` in this list with status `valid`. Upload the scans with
+        `/offline-sync` as soon as the connection is back.
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OfflineList' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /checkin/events/{eventId}/offline-sync:
+    post:
+      tags: [Check-In]
+      summary: Upload check-ins recorded offline (bonus)
+      description: |
+        Still one entry per ticket: the first check-in that reaches the server wins, later
+        ones come back as `already_used` so staff can follow up. Results keep the request order.
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [checkIns]
+              properties:
+                checkIns:
+                  type: array
+                  minItems: 1
+                  maxItems: 1000
+                  items:
+                    type: object
+                    required: [ticketId, checkedInAt]
+                    properties:
+                      ticketId: { type: string }
+                      checkedInAt: { type: string, format: date-time }
+      responses:
+        '200':
+          description: One result per uploaded check-in
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results]
+                properties:
+                  results:
+                    type: array
+                    items: { $ref: '#/components/schemas/OfflineSyncResult' }
+        default: { $ref: '#/components/responses/Error' }
+
   # ---------------------------------------------------------------- Support
 
   /support/cases:
@@ -1261,9 +1449,12 @@ paths:
       summary: List my support cases (SRS §4.13)
       description: |
         A user only ever sees cases they are allowed to see — checked by role **and** by
-        their relationship to the event, order, or ticket.
+        their relationship to the event, order, or ticket: the requester, the assignee, the
+        event's organizer, and Platform Admins.
       parameters:
         - { name: status, in: query, schema: { $ref: '#/components/schemas/CaseStatus' } }
+        - { name: eventId, in: query, description: "One event's cases (event history, §4.16).", schema: { type: string } }
+        - { name: handledBy, in: query, schema: { type: string, enum: [organizer, platform] } }
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
       responses:
@@ -1368,6 +1559,76 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SupportMessage' }
         '403': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /support/cases/{caseId}/escalate:
+    post:
+      tags: [Support]
+      summary: Escalate a case to Platform Admins (SRS §4.12)
+      description: |
+        The requester or the event's organizer hands the case to BiletFlow support
+        (`handledBy` becomes `platform`). The organizer can still read and reply.
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, description: Posted as a message on the case. }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportCase' }
+        '409': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /support/cases/{caseId}/attachments:
+    post:
+      tags: [Support]
+      summary: Post a message with a file (bonus)
+      description: PNG, JPEG, or PDF, at most 5 MB. The file type is checked against its content.
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+                body: { type: string }
+      responses:
+        '201':
+          description: Posted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportMessage' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /support/attachments/{attachmentId}:
+    get:
+      tags: [Support]
+      summary: Download an attachment
+      description: Only for people who can read the case.
+      parameters:
+        - { name: attachmentId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: The file
+          content:
+            image/png:
+              schema: { type: string, format: binary }
+            image/jpeg:
+              schema: { type: string, format: binary }
+            application/pdf:
+              schema: { type: string, format: binary }
         default: { $ref: '#/components/responses/Error' }
 
   # --------------------------------------------------------------- Insights
@@ -1785,6 +2046,7 @@ components:
         email: { type: string, format: email }
         emailVerified: { type: boolean }
         fullName: { type: string }
+        language: { $ref: '#/components/schemas/Language' }
         roles:
           type: array
           items:
@@ -1861,6 +2123,11 @@ components:
             paidSalesActive:
               type: boolean
               description: Whether paid tickets can actually be bought (SRS §4.5).
+            venueId:
+              type: string
+              description: Set when the event uses assigned seating; get the seats from /events/{eventId}/seats.
+            calendarLinks:
+              $ref: '#/components/schemas/CalendarLinks'
             ticketTypes:
               type: array
               items: { $ref: '#/components/schemas/TicketType' }
@@ -1893,6 +2160,9 @@ components:
         salesEndAt: { type: string, format: date-time }
         maxPerOrder: { type: integer, description: Limit per order (SRS §4.3). }
         hidden: { type: boolean, default: false }
+        seatCategory:
+          type: string
+          description: Assigned seating only. The price category of the layout this type sells (one type per category).
 
     TicketTypePatch:
       type: object
@@ -1906,6 +2176,7 @@ components:
         salesEndAt: { type: string, format: date-time }
         maxPerOrder: { type: integer }
         hidden: { type: boolean }
+        seatCategory: { type: string }
 
     TicketType:
       allOf:
@@ -2015,9 +2286,17 @@ components:
 
     CheckoutInput:
       type: object
-      required: [eventId, items]
+      description: General admission sends `items`; assigned seating sends `seatIds` instead.
+      required: [eventId]
       properties:
         eventId: { type: string }
+        seatIds:
+          type: array
+          items: { type: string }
+          description: Seats chosen on the seat map. Attendee number i sits in seat number i.
+        language:
+          $ref: '#/components/schemas/Language'
+          description: For the emails and PDFs of this order. Defaults to the user's language, else ru.
         items:
           type: array
           minItems: 1
@@ -2108,6 +2387,15 @@ components:
         venueName: { type: string }
         ticketTypeName: { type: string }
         attendee: { $ref: '#/components/schemas/AttendeeInput' }
+        seat:
+          type: object
+          description: Assigned seating only.
+          required: [section, row, number, accessible]
+          properties:
+            section: { type: string }
+            row: { type: string }
+            number: { type: integer }
+            accessible: { type: boolean }
         status: { type: string, enum: [valid, checked_in, cancelled, refunded] }
         qrPayload:
           type: string
@@ -2124,6 +2412,7 @@ components:
         fullName: { type: string }
         email: { type: string, format: email }
         ticketTypeName: { type: string }
+        seatLabel: { type: string, description: e.g. Parterre A5 (assigned seating only). }
         status: { type: string, enum: [valid, checked_in, cancelled, refunded] }
         checkedInAt: { type: string, format: date-time }
 
@@ -2190,6 +2479,7 @@ components:
         attendeeName: { type: string }
         checkedInAt: { type: string, format: date-time }
         checkedInByUserId: { type: string }
+        method: { type: string, enum: [qr, manual, offline] }
 
     CaseStatus:
       type: string
@@ -2197,7 +2487,7 @@ components:
 
     CaseCategory:
       type: string
-      enum: [ticket_delivery, payment, refund, event_information, check_in, account, technical]
+      enum: [ticket_delivery, payment, refund, seating, event_information, check_in, account, technical]
 
     SupportCase:
       type: object
@@ -2230,6 +2520,9 @@ components:
         authorUserId: { type: string }
         authorName: { type: string }
         body: { type: string }
+        attachments:
+          type: array
+          items: { $ref: '#/components/schemas/Attachment' }
         createdAt: { type: string, format: date-time }
 
     OrganizerProfile:
@@ -2380,3 +2673,146 @@ components:
         checkoutHoldMinutes: { type: integer, minimum: 1, maximum: 120 }
         guestCheckoutEnabled: { type: boolean }
         termsVersion: { type: string }
+
+    Language:
+      type: string
+      enum: [kk, ru, en]
+      description: Kazakh, Russian, English (SRS §7).
+
+    CalendarLinks:
+      type: object
+      description: One-click "add to calendar" links (SRS §4.11). No calendar access is requested.
+      required: [ics, google, outlook]
+      properties:
+        ics: { type: string, format: uri }
+        google: { type: string, format: uri }
+        outlook: { type: string, format: uri }
+
+    VenueSummary:
+      type: object
+      required: [id, name, city, seatCount, priceCategories]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        city: { type: string }
+        address: { type: string }
+        seatCount: { type: integer }
+        priceCategories:
+          type: array
+          items:
+            type: object
+            required: [priceCategory, seats, accessible]
+            properties:
+              priceCategory: { type: string }
+              seats: { type: integer }
+              accessible: { type: integer, description: Wheelchair-accessible seats in the category. }
+
+    Venue:
+      allOf:
+        - $ref: '#/components/schemas/VenueSummary'
+        - type: object
+          required: [sections]
+          properties:
+            sections:
+              type: array
+              items:
+                type: object
+                required: [id, name, rows]
+                properties:
+                  id: { type: string }
+                  name: { type: string }
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, label, seats]
+                      properties:
+                        id: { type: string }
+                        label: { type: string }
+                        seats:
+                          type: array
+                          items:
+                            type: object
+                            required: [id, number, priceCategory, accessible]
+                            properties:
+                              id: { type: string }
+                              number: { type: integer }
+                              priceCategory: { type: string }
+                              accessible: { type: boolean }
+
+    SeatMap:
+      type: object
+      description: |
+        Status per seat: available, held (in someone's checkout), sold, or unavailable
+        (blocked by the organizer or no ticket type on sale for its category). Show status
+        and accessibility with colour **and** text or symbols (§4.3.1, WCAG).
+      required: [eventId, venueId, venueName, sections]
+      properties:
+        eventId: { type: string }
+        venueId: { type: string }
+        venueName: { type: string }
+        sections:
+          type: array
+          items:
+            type: object
+            required: [name, rows]
+            properties:
+              name: { type: string }
+              rows:
+                type: array
+                items:
+                  type: object
+                  required: [label, seats]
+                  properties:
+                    label: { type: string }
+                    seats:
+                      type: array
+                      items:
+                        type: object
+                        required: [id, number, priceCategory, accessible, status]
+                        properties:
+                          id: { type: string }
+                          number: { type: integer }
+                          priceCategory: { type: string }
+                          accessible: { type: boolean }
+                          status: { type: string, enum: [available, held, sold, unavailable] }
+                          ticketTypeId: { type: string }
+                          price: { $ref: '#/components/schemas/Money' }
+
+    OfflineList:
+      type: object
+      required: [eventId, generatedAt, tickets]
+      properties:
+        eventId: { type: string }
+        generatedAt: { type: string, format: date-time }
+        tickets:
+          type: array
+          items:
+            type: object
+            required: [ticketId, ticketNumber, qrPayload, attendeeName, ticketTypeName, status]
+            properties:
+              ticketId: { type: string }
+              ticketNumber: { type: string }
+              qrPayload: { type: string }
+              attendeeName: { type: string }
+              ticketTypeName: { type: string }
+              seatLabel: { type: string }
+              status: { type: string, enum: [valid, checked_in, cancelled, refunded] }
+
+    OfflineSyncResult:
+      type: object
+      required: [ticketId, result]
+      properties:
+        ticketId: { type: string }
+        result: { type: string, enum: [accepted, already_used, cancelled, refunded, invalid, wrong_event] }
+        checkIn: { $ref: '#/components/schemas/CheckIn' }
+
+    Attachment:
+      type: object
+      required: [id, filename, contentType, size, url]
+      properties:
+        id: { type: string }
+        filename: { type: string }
+        contentType: { type: string, enum: [image/png, image/jpeg, application/pdf] }
+        size: { type: integer, description: Bytes. }
+        url: { type: string, format: uri, description: Download with the same Authorization header. }
