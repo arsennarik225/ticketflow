@@ -33,3 +33,6 @@ android/app/build/
 .idea/
 .vscode/
 .DS_Store
+
+# Database backups (scripts/backup.sh)
+backups/

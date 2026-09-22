@@ -16,7 +16,8 @@ One backend, one database, no microservices (SRS §9). Web and mobile talk only 
 | Folder / file | Job |
 | --- | --- |
 | `app/routers/` | HTTP endpoints, one file per contract area. Thin: check access, call a service, commit. |
-| `app/services/` | The rules: event status and activation, inventory, pricing and promos, checkout, payments, refunds, PDFs, QR codes, email, analytics, audit log. |
+| `app/services/` | The rules: event status and activation, inventory, seating, pricing and promos, checkout, payments, refunds, PDFs, QR codes, email, analytics, audit log. |
+| `app/services/messages.py` | Every email and PDF text in Kazakh, Russian, and English. |
 | `app/models.py` | ORM tables, mirroring `db/schema.sql`. |
 | `app/schemas.py` | Request and response bodies, shaped like the contract (camelCase JSON). |
 | `app/views.py` | Turns rows into response bodies. |
@@ -56,6 +57,19 @@ paper and phone are one ticket. A Campaign QR holds a web link with an opaque to
 scanner recognises it and answers `rejected_campaign_qr`. Check-in locks the ticket row and a
 unique index allows one active check-in, so two scanners can't admit the same ticket.
 
+## Assigned seating (bonus)
+
+A seated event points to a predefined layout (`GET /venues`). Buyers pick seats on
+`GET /events/{id}/seats` and send `seatIds` to checkout instead of `items`. The same event-row
+lock that protects ticket counts also protects seats, the hold is a `seat_holds` row that stops
+counting when the checkout expires, and a unique index stops a second valid ticket for a seat.
+
+## Offline scanning (bonus)
+
+The scanner app downloads `/checkin/events/{id}/offline-list` before the doors open, checks codes
+against it without internet, and uploads its scans to `/offline-sync` later. The first check-in
+that reaches the server wins; later ones for the same ticket come back as `already_used`.
+
 ## Cross-cutting choices
 
 - **Contract first.** `/docs` shows `docs/api/openapi.yaml`, not a spec generated from code, and
@@ -66,6 +80,8 @@ unique index allows one active check-in, so two scanners can't admit the same ti
   It powers the event timeline (§4.16).
 - **Settings in the database.** Fees, hold time, and guest checkout are admin-editable rows,
   not environment variables.
+- **Languages.** Emails and PDF tickets use the recipient's language (`kk`, `ru`, `en`). API
+  error messages stay English; apps translate by error code (`docs/api/error-codes.md`).
 
 ## Why FastAPI and PostgreSQL (SRS §9)
 

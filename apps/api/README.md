@@ -33,7 +33,8 @@ the contract fails the build.
 ```
 app/main.py        app setup: /v1 routes, CORS, errors, /docs from the contract
 app/routers/       endpoints, grouped like the contract tags
-app/services/      business rules (checkout, pricing, inventory, refunds, PDFs, email, …)
+app/services/      business rules (checkout, pricing, inventory, seating, refunds, PDFs, email, …)
+app/services/messages.py   every email and PDF text in Kazakh, Russian, English
 app/models.py      tables (mirror of db/schema.sql)
 app/schemas.py     request/response bodies (camelCase JSON)
 app/views.py       rows -> response bodies
@@ -49,8 +50,9 @@ tests/             one file per area; helpers.py builds users, events, purchases
 3. Write a test with the `api` fixture; it will also check your response against the contract.
 
 Conventions: routers call `db.commit()` themselves; raise `ApiError` helpers from `app/errors.py`
-(`conflict`, `invalid`, `not_found`, …) with a stable `code`; write important actions to the
-audit log with `services.audit.record`; send email only through `services.notify`.
+(`conflict`, `invalid`, `not_found`, …) with a stable `code` and add it to
+`docs/api/error-codes.md`; write important actions to the audit log with `services.audit.record`;
+send email only through `services.notify`, with its text in all three languages in `messages.py`.
 
 ## Settings
 
@@ -76,3 +78,5 @@ Nothing real happens with money or identity (SRS §3.2, §8):
   `tok_insufficient_funds` fail with 402.
 - Identity verification is approved at once; payout accounts store only `****` + last 4 characters.
 - Every payment and refund carries `simulated: true`.
+
+Backups and deploying a demo server securely: [`docs/operations.md`](../../docs/operations.md).
