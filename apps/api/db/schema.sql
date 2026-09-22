@@ -20,6 +20,7 @@ CREATE TABLE users (
     email TEXT NOT NULL UNIQUE CHECK (email = lower(email)),
     password_hash TEXT NOT NULL,
     full_name TEXT NOT NULL,
+    language TEXT NOT NULL DEFAULT 'ru' CHECK (language IN ('kk', 'ru', 'en')),  -- emails and PDF tickets (§7)
     email_verified BOOLEAN NOT NULL DEFAULT false,
     is_platform_admin BOOLEAN NOT NULL DEFAULT false,
     suspended_at TIMESTAMPTZ,                    -- set by a Platform Admin (§4.12)
@@ -97,6 +98,44 @@ INSERT INTO platform_settings
 VALUES (500000, 250, 'organizer', 10, true, '2026-09');
 
 
+-- ============================================================ Venue layouts (§4.3.1, bonus)
+
+-- Predefined seating layouts; there is no layout editor (§4.3.1). One layout is inserted
+-- at the end of this file. Organizers pick a layout per event and price its categories
+-- with ticket types (ticket_types.seat_category).
+CREATE TABLE venues (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    city TEXT NOT NULL,
+    address TEXT
+);
+
+CREATE TABLE venue_sections (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    venue_id UUID NOT NULL REFERENCES venues(id),
+    name TEXT NOT NULL,
+    position INT NOT NULL,
+    UNIQUE (venue_id, name)
+);
+
+CREATE TABLE venue_rows (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    section_id UUID NOT NULL REFERENCES venue_sections(id),
+    label TEXT NOT NULL,                         -- A, B, C...
+    position INT NOT NULL,
+    UNIQUE (section_id, label)
+);
+
+CREATE TABLE seats (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    row_id UUID NOT NULL REFERENCES venue_rows(id),
+    number INT NOT NULL CHECK (number >= 1),
+    price_category TEXT NOT NULL,                -- e.g. premium, standard, balcony
+    accessible BOOLEAN NOT NULL DEFAULT false,   -- wheelchair-accessible place
+    UNIQUE (row_id, number)
+);
+
+
 -- ============================================================ Events (§4.2, §4.5)
 
 CREATE TABLE events (
@@ -130,6 +169,8 @@ CREATE TABLE events (
     -- Moderation (§4.12): a suspended event is hidden and cannot sell.
     suspended_at TIMESTAMPTZ,
     suspended_reason TEXT,
+    -- Assigned seating (§4.3.1): set = seats are sold from this venue's layout.
+    venue_id UUID REFERENCES venues(id),
     duplicated_from_id UUID REFERENCES events(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -137,6 +178,13 @@ CREATE TABLE events (
 );
 CREATE INDEX events_organizer_idx ON events (organizer_id);
 CREATE INDEX events_listing_idx ON events (status, visibility, starts_at);
+
+-- Seats the organizer took out of sale for one event (sound desk, camera platform...).
+CREATE TABLE event_blocked_seats (
+    event_id UUID NOT NULL REFERENCES events(id),
+    seat_id UUID NOT NULL REFERENCES seats(id),
+    PRIMARY KEY (event_id, seat_id)
+);
 
 -- Anyone signed in can flag an event for Platform Admins to review (§4.12).
 CREATE TABLE event_reports (
@@ -172,10 +220,14 @@ CREATE TABLE ticket_types (
     sales_end_at TIMESTAMPTZ,
     max_per_order INT CHECK (max_per_order >= 1),
     hidden BOOLEAN NOT NULL DEFAULT false,       -- withdrawn from sale, never deleted
+    seat_category TEXT,                          -- assigned seating: the seats.price_category it sells
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX ticket_types_event_idx ON ticket_types (event_id);
+-- One ticket type per seat category, so every seat has exactly one price.
+CREATE UNIQUE INDEX ticket_types_one_per_seat_category ON ticket_types (event_id, seat_category)
+    WHERE seat_category IS NOT NULL;
 
 -- One campaign = one promo code + one Campaign QR Code (§4.14).
 CREATE TABLE campaigns (
@@ -224,6 +276,7 @@ CREATE TABLE checkout_sessions (
     total BIGINT NOT NULL CHECK (total >= 0),    -- what the buyer pays
     expires_at TIMESTAMPTZ NOT NULL,
     idempotency_key TEXT,                        -- remembered by a successful confirm
+    language TEXT NOT NULL DEFAULT 'ru' CHECK (language IN ('kk', 'ru', 'en')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -235,6 +288,16 @@ CREATE TABLE checkout_session_items (
     quantity INT NOT NULL CHECK (quantity >= 1),
     unit_price BIGINT NOT NULL CHECK (unit_price >= 0),  -- price when the hold was taken
     PRIMARY KEY (session_id, ticket_type_id)
+);
+
+-- Seats held by a checkout (the Seat Hold of §6). A hold counts only while its session is
+-- open and not expired, so abandoned or timed-out checkouts release seats on their own.
+CREATE TABLE seat_holds (
+    session_id UUID NOT NULL REFERENCES checkout_sessions(id) ON DELETE CASCADE,
+    seat_id UUID NOT NULL REFERENCES seats(id),
+    ticket_type_id UUID NOT NULL REFERENCES ticket_types(id),  -- the price of this seat
+    position INT NOT NULL,                       -- order chosen by the buyer; attendee i sits here
+    PRIMARY KEY (session_id, seat_id)
 );
 
 
@@ -254,6 +317,7 @@ CREATE TABLE orders (
     processing_fee BIGINT NOT NULL,              -- the processor's charge for this order
     processing_fee_paid_by TEXT NOT NULL CHECK (processing_fee_paid_by IN ('organizer', 'attendee')),
     total BIGINT NOT NULL,                       -- what the buyer paid; 0 = free registration
+    language TEXT NOT NULL DEFAULT 'ru' CHECK (language IN ('kk', 'ru', 'en')),  -- of emails and PDFs
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     cancelled_at TIMESTAMPTZ,
     cancel_reason TEXT
@@ -266,7 +330,8 @@ CREATE TABLE order_items (
     order_id UUID NOT NULL REFERENCES orders(id),
     ticket_type_id UUID NOT NULL REFERENCES ticket_types(id),
     quantity INT NOT NULL CHECK (quantity >= 1),
-    unit_price BIGINT NOT NULL CHECK (unit_price >= 0)
+    unit_price BIGINT NOT NULL CHECK (unit_price >= 0),
+    seat_id UUID REFERENCES seats(id)            -- assigned seating: one item per seat
 );
 CREATE INDEX order_items_order_idx ON order_items (order_id);
 
@@ -282,10 +347,14 @@ CREATE TABLE tickets (
     attendee_name TEXT NOT NULL,                 -- the Attendee entity lives on the ticket
     attendee_email TEXT NOT NULL,
     attendee_phone TEXT,
+    seat_id UUID REFERENCES seats(id),           -- assigned seating only
     status TEXT NOT NULL DEFAULT 'valid' CHECK (status IN ('valid', 'checked_in', 'cancelled', 'refunded')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX tickets_event_idx ON tickets (event_id, status);
+-- A seat can be sold only once per event, even if two checkouts race (§4.3.1).
+CREATE UNIQUE INDEX tickets_one_valid_per_seat ON tickets (event_id, seat_id)
+    WHERE seat_id IS NOT NULL AND status IN ('valid', 'checked_in');
 CREATE INDEX tickets_type_idx ON tickets (ticket_type_id, status);
 CREATE INDEX tickets_order_idx ON tickets (order_id);
 
@@ -339,7 +408,7 @@ CREATE TABLE check_ins (
     ticket_id UUID NOT NULL REFERENCES tickets(id),
     event_id UUID NOT NULL REFERENCES events(id),
     checked_in_by_user_id UUID NOT NULL REFERENCES users(id),
-    method TEXT NOT NULL CHECK (method IN ('qr', 'manual')),
+    method TEXT NOT NULL CHECK (method IN ('qr', 'manual', 'offline')),
     checked_in_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     reversed_at TIMESTAMPTZ,                     -- "undo" keeps the row for history
     reversed_by_user_id UUID REFERENCES users(id)
@@ -358,7 +427,7 @@ CREATE TABLE support_cases (
     -- 'platform':  an organizer (or anyone without event context) asking Platform Admins.
     handled_by TEXT NOT NULL CHECK (handled_by IN ('organizer', 'platform')),
     category TEXT NOT NULL CHECK (category IN ('ticket_delivery', 'payment', 'refund',
-        'event_information', 'check_in', 'account', 'technical')),
+        'seating', 'event_information', 'check_in', 'account', 'technical')),
     subject TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'open'
         CHECK (status IN ('open', 'in_progress', 'waiting_for_customer', 'resolved')),
@@ -380,6 +449,19 @@ CREATE TABLE support_messages (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX support_messages_case_idx ON support_messages (case_id, created_at);
+
+-- Files on support messages (bonus): screenshots or PDFs, at most 5 MB each. Kept in the
+-- database so the MVP needs no separate file storage.
+CREATE TABLE support_attachments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    message_id UUID NOT NULL REFERENCES support_messages(id),
+    filename TEXT NOT NULL,
+    content_type TEXT NOT NULL CHECK (content_type IN ('image/png', 'image/jpeg', 'application/pdf')),
+    size_bytes INT NOT NULL CHECK (size_bytes BETWEEN 1 AND 5242880),
+    data BYTEA NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX support_attachments_message_idx ON support_attachments (message_id);
 
 
 -- ============================================================ Notifications and audit (§4.10, §4.16)
@@ -425,3 +507,29 @@ CREATE TRIGGER audit_log_append_only BEFORE UPDATE OR DELETE ON audit_log
 CREATE TABLE schema_info (
     checksum TEXT NOT NULL
 );
+
+
+-- ============================================================ The predefined layout
+
+-- "BiletFlow Hall", 160 seats: Parterre rows A-H x 14 seats (rows A-C premium, D-H
+-- standard, H1-H4 wheelchair accessible) and Balcony rows A-D x 12 seats.
+INSERT INTO venues (id, name, city, address)
+VALUES ('2f1d7c52-8f0e-4c9a-9b1e-6a3d5e7f0b11', 'BiletFlow Hall', 'Almaty', 'Abay Ave 50');
+
+INSERT INTO venue_sections (venue_id, name, position)
+VALUES ('2f1d7c52-8f0e-4c9a-9b1e-6a3d5e7f0b11', 'Parterre', 1),
+       ('2f1d7c52-8f0e-4c9a-9b1e-6a3d5e7f0b11', 'Balcony', 2);
+
+INSERT INTO venue_rows (section_id, label, position)
+SELECT s.id, chr(64 + n), n
+FROM venue_sections s
+CROSS JOIN LATERAL generate_series(1, CASE s.name WHEN 'Parterre' THEN 8 ELSE 4 END) AS n
+WHERE s.venue_id = '2f1d7c52-8f0e-4c9a-9b1e-6a3d5e7f0b11';
+
+INSERT INTO seats (row_id, number, price_category, accessible)
+SELECT r.id, n,
+       CASE WHEN s.name = 'Balcony' THEN 'balcony' WHEN r.position <= 3 THEN 'premium' ELSE 'standard' END,
+       s.name = 'Parterre' AND r.label = 'H' AND n <= 4
+FROM venue_rows r
+JOIN venue_sections s ON s.id = r.section_id
+CROSS JOIN LATERAL generate_series(1, CASE s.name WHEN 'Parterre' THEN 14 ELSE 12 END) AS n;

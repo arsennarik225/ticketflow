@@ -39,6 +39,13 @@ erDiagram
     events |o--o{ support_cases : "is about"
     events |o--o{ audit_log : "has history in"
     users ||--o{ notifications : receives
+    venues ||--o{ venue_sections : has
+    venue_sections ||--o{ venue_rows : has
+    venue_rows ||--o{ seats : has
+    venues |o--o{ events : "seats (assigned seating)"
+    checkout_sessions ||--o{ seat_holds : "holds seats in"
+    seats |o--o{ tickets : "is sold as"
+    support_messages ||--o{ support_attachments : carries
 
     events {
         uuid id PK
@@ -85,12 +92,19 @@ erDiagram
     check_ins {
         uuid id PK
         uuid ticket_id FK "one active per ticket"
+        text method "qr | manual | offline"
         timestamptz reversed_at "undo keeps the row"
+    }
+    seats {
+        uuid id PK
+        int number
+        text price_category "premium | standard | balcony"
+        boolean accessible
     }
 ```
 
 Not drawn: `auth_sessions` and `user_tokens` (sign-in and email links), `platform_settings`
-(one row of admin-editable settings), `event_reports`, and `schema_info`.
+(one row of admin-editable settings), `event_blocked_seats`, `event_reports`, and `schema_info`.
 
 ## Tables by area
 
@@ -99,21 +113,32 @@ Not drawn: `auth_sessions` and `user_tokens` (sign-in and email links), `platfor
 | Accounts §4.1 | `users`, `auth_sessions`, `user_tokens`, `organizer_profiles`, `payout_accounts` |
 | Events §4.2, §4.5 | `events` (activation steps live here and in `payments`), `staff_assignments`, `event_reports` |
 | Tickets and promos §4.3, §4.14 | `ticket_types`, `campaigns`, `campaign_ticket_types`, `promo_redemptions` |
+| Assigned seating §4.3.1 | `venues`, `venue_sections`, `venue_rows`, `seats` (one predefined layout), `event_blocked_seats`, `seat_holds` |
 | Checkout and orders §4.4, §4.6, §4.9 | `checkout_sessions`, `checkout_session_items`, `orders`, `order_items`, `tickets`, `payments`, `refunds` |
 | Check-in §4.8 | `check_ins` |
-| Support §4.13 | `support_cases`, `support_messages` |
+| Support §4.13 | `support_cases`, `support_messages`, `support_attachments` |
 | Notifications and history §4.10, §4.16 | `notifications`, `audit_log` |
 | Administration §4.12 | `platform_settings` |
 
-The attendee (SRS §6) is stored on each ticket: name, email, phone.
+The attendee (SRS §6) is stored on each ticket: name, email, phone. A promo code (§6) is part
+of its campaign (one code per campaign). `users.language`, `checkout_sessions.language`, and
+`orders.language` (`kk`, `ru`, `en`) choose the language of emails and PDF tickets.
+
+The predefined layout ("BiletFlow Hall", 160 seats: Parterre rows A-H, Balcony rows A-D, three
+price categories, four wheelchair-accessible seats) is inserted by `schema.sql` itself, so every
+database has it. An event uses it by setting `events.venue_id`; each price category is sold by one
+ticket type (`ticket_types.seat_category`).
 
 ## Guarantees the database enforces
 
 - **No double entry:** a unique index allows only one active check-in per ticket.
+- **No seat sold twice:** a unique index allows one valid ticket per seat and event.
+- **One price per seat:** a unique index allows one ticket type per seat category and event.
 - **One activation fee per event:** a unique index on successful fee payments.
 - **Payments are simulated:** `CHECK (simulated)` on `payments` and `refunds`.
 - **History can't be rewritten:** a trigger rejects `UPDATE` and `DELETE` on `audit_log`.
 - **No overselling:** checkout locks the event row while it counts and writes the hold.
+- **Backups:** `scripts/backup.sh` and `scripts/restore.sh`, see `docs/operations.md`.
 
 ## Changing the schema
 
