@@ -1,0 +1,65 @@
+# Local development and demo stack: PostgreSQL + API + a mail catcher.
+#   docker compose up --build      start everything (first run seeds demo data)
+#   docker compose down -v         stop and wipe the database
+# Ports can be changed without editing this file, e.g. API_PORT=8080 docker compose up
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: biletflow
+      POSTGRES_PASSWORD: biletflow
+      POSTGRES_DB: biletflow
+    ports:
+      - "${DB_PORT:-5433}:5432"   # 5433 on your machine avoids clashing with a local Postgres
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U biletflow -d biletflow"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Catches every email the API sends. Inbox: http://localhost:8025
+  mail:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "${MAIL_UI_PORT:-8025}:8025"
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+      mail:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql+psycopg://biletflow:biletflow@db:5432/biletflow
+      TEST_DATABASE_URL: postgresql+psycopg://biletflow:biletflow@db:5432/biletflow_test
+      SMTP_HOST: mail
+      SMTP_PORT: "1025"
+      SEED_DEMO_DATA: "true"
+      WEB_URL: ${WEB_URL:-http://localhost:3000}
+      API_URL: ${API_URL:-http://localhost:8000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      JWT_SECRET: ${JWT_SECRET:-dev-only-jwt-secret-change-me-32bytes}
+      QR_SECRET: ${QR_SECRET:-dev-only-qr-secret-change-me-32bytes}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      # Live code: edits on your machine reload the API without a rebuild.
+      - ./apps/api/app:/app/app
+      - ./apps/api/db:/app/db:ro
+      - ./apps/api/tests:/app/tests
+      - ./docs/api/openapi.yaml:/app/openapi.yaml:ro
+    command: sh -c "python -m app.initdb && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  db-data:

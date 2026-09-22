@@ -3,66 +3,92 @@
 Event ticketing platform for Kazakhstan. Student project.
 
 **Requirements:** [`docs/BiletFlow_SRS_Initial_Draft.pdf`](docs/BiletFlow_SRS_Initial_Draft.pdf) — the source of truth.
-**API contract:** [`docs/api/openapi.yaml`](docs/api/openapi.yaml) — read before writing code.
+**API contract:** [`docs/api/openapi.yaml`](docs/api/openapi.yaml) — what the web and mobile apps build against.
 **How to check this:** [`docs/HOW-TO-CHECK.md`](docs/HOW-TO-CHECK.md)
 
-Weeks 1–2 groundwork only (SRS §13.3). No app code yet.
+## Run it
+
+You need Docker Desktop. From the repository root:
+
+```bash
+docker compose up --build
+```
+
+The first start creates the database and loads demo data. Then open:
+
+| What | Where |
+| --- | --- |
+| API | http://localhost:8000/v1 |
+| API docs — try every request here | http://localhost:8000/docs |
+| Emails the API sends (verification, tickets…) | http://localhost:8025 |
+| PostgreSQL (for DBeaver, TablePlus…) | `localhost:5433`, user / password / database: `biletflow` |
+
+Demo accounts, all with password `demo12345`:
+
+| Email | Role |
+| --- | --- |
+| `admin@biletflow.kz` | Platform Admin |
+| `organizer@biletflow.kz` | Organizer with 4 events (paid, free, draft, finished) |
+| `staff@biletflow.kz` | Event Admin — use this in the scanner app |
+| `attendee@biletflow.kz` | Attendee with tickets and a support case |
+
+Payments are simulated. Use `tok_success`, `tok_declined`, or `tok_insufficient_funds` as the payment token.
+
+```bash
+docker compose run --rm api pytest   # run the backend tests
+docker compose logs -f api           # watch the API log
+docker compose down -v               # stop and wipe the database (demo data returns on next start)
+```
+
+A port already in use? Copy `.env.example` to `.env` and change it there.
 
 ## Folders
 
 ```
-apps/web/     Web app — attendee, organizer, admin
-apps/mobile/  Ticket-scanner app for Event Admins
-apps/api/     FastAPI backend
-docs/         Requirements + API contract
+apps/api/     FastAPI backend — done, see apps/api/README.md
+apps/web/     Web app for attendees, organizers, admins — to build, see apps/web/README.md
+apps/mobile/  Ticket-scanner app for Event Admins — to build, see apps/mobile/README.md
+docs/         Requirements, API contract, database and architecture notes
 ```
 
 ## Stack
 
-Python + FastAPI + PostgreSQL (leaning, not final). Docker for deployment (SRS §8).
-Web and mobile stack not confirmed — SRS §9 recommends React, React Native, TypeScript, Tailwind.
-
-Still owed: the short written rationale for FastAPI + Postgres that SRS §9 asks for.
-
-## See the API contract
-
-Paste `docs/api/openapi.yaml` into **[editor.swagger.io](https://editor.swagger.io)** — easiest way.
-Or run `npx @redocly/cli preview-docs docs/api/openapi.yaml`.
-
-It covers only the core flow (SRS §13.4): create event → share campaign QR → apply promo →
-pick ticket → simulated checkout → issue ticket → support → verify entry.
-Analytics, event history, admin portal, seating, and calendar export come later.
+Python 3.12 + FastAPI + PostgreSQL 16, run with Docker Compose — reasons in
+[`docs/architecture.md`](docs/architecture.md). Data model: [`docs/database.md`](docs/database.md).
+Web and mobile are not started; SRS §9 recommends React (Next.js), React Native (Expo), TypeScript, Tailwind.
 
 ## Rules nobody should break
 
-From the SRS, not opinions. Getting these wrong breaks the demo.
+From the SRS, not opinions. The backend enforces all of them; the apps must not work around them.
 
 - Money is an **integer in tiyin** (1 KZT = 100). Never a float. (§7)
 - Payments are **simulated**, always flagged, never shown as real money. (§4.6)
 - Tickets are issued **only after payment succeeds**. (§4.6)
-- Checkout **holds** tickets atomically — two people can't buy the same last seat. (§4.3.1, §7)
+- Checkout **holds** tickets atomically — two people can't buy the same last ticket. (§4.3.1, §7)
 - Paper and phone ticket share **one identifier** — not two admissions. (§4.7)
-- A **Campaign QR is never admission**. The scanner must reject it. (§4.14)
+- A **Campaign QR is never admission**. The scanner rejects it. (§4.14)
 - Discounts are calculated **on the server**, never sent by the client. (§4.14)
 - Check-in is **online only**, and a ticket can't be used twice. (§4.8)
 
-## FastAPI warning
+## Decisions (defaults)
 
-FastAPI generates its own `/openapi.json` from your Pydantic models, so you'll have two
-specs that drift apart. **`docs/api/openapi.yaml` is the source of truth** — build models
-to match it, not the reverse.
+The SRS left these open (§12). The backend uses the defaults below. A Platform Admin can change
+guest checkout, the fee amounts, who pays the processing fee, and the hold time at
+`PATCH /v1/admin/settings`, without a deploy.
 
-## Decide before coding
-
-| Question | SRS |
+| Question | Default |
 | --- | --- |
-| Guest checkout, or must attendees register? | §12 |
-| Activation fee amount, refundable? | §3.3, §12 |
-| Processing fee — organizer or attendee pays? | §12 |
-| How long does checkout hold tickets? | §4.3.1 |
-| Payment sandbox, or our own simulation? | §12 |
+| Guest checkout, or must attendees register? | Guests can buy; they get tickets by email |
+| Activation fee amount, refundable? | 5 000 KZT per event, not refundable |
+| Processing fee — organizer or attendee pays? | Organizer: 2.5 % deducted from the payout |
+| How long does checkout hold tickets? | 10 minutes |
+| Payment sandbox, or our own simulation? | Our own simulation, labelled as such |
+
+Also: private events open only through a campaign link (the organizer's invite), refunds are
+always full, and assigned seating (a bonus feature) is not built.
 
 ## Working agreement
 
 Branch `ALN-<ticket>-<slug>` off `main`. PR with one reviewer (SRS §13.2).
-Changes to `openapi.yaml` go in their own PR — all three apps depend on it.
+Changes to `openapi.yaml` go in their own PR — all three apps depend on it. The backend tests
+check every response against it, so the code and the contract cannot quietly drift apart.
