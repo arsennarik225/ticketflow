@@ -21,6 +21,7 @@ from app.services import audit
 from app.services.events import lock_event, managed_event, parse_id
 from app.services.inventory import Counts, counts_by_ticket_type
 from app.services.qr import campaign_qr_png
+from app.services.seating import categories, load_venue
 from app.views import campaign_url, campaigns_out, ticket_types_out
 
 router = APIRouter(route_class=ApiRoute, tags=["Tickets & Campaigns"])
@@ -33,6 +34,16 @@ CampaignId = Annotated[str, Path(alias="campaignId")]
 def check_window(start, end, what: str) -> None:
     if start and end and end <= start:
         raise invalid("invalid_dates", f"The {what} must end after it starts.")
+
+
+def check_seat_category(db: Session, event: Event, category: str | None, ticket_type: TicketType | None = None) -> None:
+    """Assigned seating: the category must exist in the event's layout and belong to one type only."""
+    if category is None:
+        return
+    if event.venue_id and category not in categories(load_venue(db, event.venue_id)):
+        raise invalid("unknown_seat_category", "That seat category is not in this event's venue layout.")
+    if any(t.seat_category == category and t is not ticket_type for t in event.ticket_types):
+        raise conflict("duplicate_seat_category", "Another ticket type already sells this seat category.")
 
 
 def ticket_type_detail(db: Session, event: Event, ticket_type: TicketType) -> TicketTypeOut:
@@ -55,9 +66,11 @@ def create_ticket_type(body: TicketTypeIn, event_id: EventId, user: User = Depen
     if event.status == "cancelled":
         raise conflict("event_cancelled", "This event is cancelled.")
     check_window(body.sales_start_at, body.sales_end_at, "sales period")
+    check_seat_category(db, event, body.seat_category)
     ticket_type = TicketType(event_id=event.id, name=body.name, description=body.description,
                              price=body.price.amount, quantity=body.quantity, sales_start_at=body.sales_start_at,
-                             sales_end_at=body.sales_end_at, max_per_order=body.max_per_order, hidden=body.hidden)
+                             sales_end_at=body.sales_end_at, max_per_order=body.max_per_order, hidden=body.hidden,
+                             seat_category=body.seat_category)
     db.add(ticket_type)
     db.flush()
     audit.record(db, "ticket_type.created",
@@ -91,6 +104,8 @@ def update_ticket_type(body: TicketTypePatchIn, event_id: EventId, ticket_type_i
                            f"Quantity cannot be lower than the tickets already sold or held ({c.sold + c.held}).")
     check_window(changes.get("sales_start_at", ticket_type.sales_start_at),
                  changes.get("sales_end_at", ticket_type.sales_end_at), "sales period")
+    if "seat_category" in changes:
+        check_seat_category(db, event, changes["seat_category"], ticket_type)
     described = []
     for key, value in changes.items():
         if key == "price":

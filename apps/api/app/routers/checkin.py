@@ -14,8 +14,11 @@ from app.database import get_db
 from app.deps import ApiRoute, contains, current_user
 from app.errors import ApiError, forbidden, not_found
 from app.models import Campaign, CheckIn, Event, StaffAssignment, Ticket, User, utcnow
-from app.schemas import CheckInIn, CheckInOut, CheckInSearchOut, EventOut, ListOf, VerifyIn, VerifyResult
-from app.security import read_ticket_qr
+from app.schemas import (
+    CheckInIn, CheckInOut, CheckInSearchOut, EventOut, ListOf, OfflineListOut, OfflineSyncIn, OfflineSyncOut,
+    OfflineSyncResult, OfflineTicket, VerifyIn, VerifyResult,
+)
+from app.security import read_ticket_qr, ticket_qr_payload
 from app.services import audit
 from app.services.events import checkin_access, parse_id
 from app.views import attendees_out, check_in_out, events_out, ticket_out
@@ -154,3 +157,45 @@ def search_attendees(event_id: EventId, q: Annotated[str | None, Query(min_lengt
                func.count().filter(Ticket.status == "checked_in")).where(Ticket.event_id == event.id)
     ).one()
     return CheckInSearchOut(data=attendees_out(db, list(matches)), registered=registered, checked_in=checked_in)
+
+
+# ------------------------------------------------------------------ offline mode (bonus)
+
+@router.get("/checkin/events/{eventId}/offline-list", response_model=OfflineListOut)
+def offline_list(event_id: EventId, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Download before the doors open to keep scanning without internet: a scanned code is
+    valid offline if it equals a `qrPayload` here with status `valid`. Upload what was
+    scanned with /offline-sync as soon as the connection is back."""
+    event, _ = checkin_access(db, event_id, user)
+    tickets = db.scalars(select(Ticket).where(Ticket.event_id == event.id).order_by(Ticket.ticket_number)).all()
+    return OfflineListOut(event_id=str(event.id), generated_at=utcnow(), tickets=[
+        OfflineTicket(ticket_id=str(t.id), ticket_number=t.ticket_number, qr_payload=ticket_qr_payload(t.id),
+                      attendee_name=t.attendee_name, ticket_type_name=t.ticket_type.name,
+                      seat_label=t.seat.label if t.seat else None, status=t.status)
+        for t in tickets])
+
+
+@router.post("/checkin/events/{eventId}/offline-sync", response_model=OfflineSyncOut)
+def offline_sync(body: OfflineSyncIn, event_id: EventId, user: User = Depends(current_user),
+                 db: Session = Depends(get_db)):
+    """Upload check-ins recorded offline, in any order. A ticket is still admitted once: the
+    first check-in that reaches the server wins, later ones come back as `already_used` so
+    staff can follow up. Results are in the same order as the request."""
+    event, _ = checkin_access(db, event_id, user)
+    now = utcnow()
+    results: dict[int, OfflineSyncResult] = {}
+    for index, item in sorted(enumerate(body.check_ins), key=lambda pair: pair[1].checked_in_at):
+        result, ticket = evaluate(db, event, ticket_id=item.ticket_id, lock=True)
+        if result != "valid":
+            results[index] = OfflineSyncResult(ticket_id=item.ticket_id, result=result)
+            continue
+        ticket.status = "checked_in"
+        record = CheckIn(ticket_id=ticket.id, event_id=event.id, checked_in_by_user_id=user.id, method="offline",
+                         checked_in_at=min(item.checked_in_at, now), ticket=ticket)
+        db.add(record)
+        db.flush()
+        audit.record(db, "check_in.created", f"Checked in {ticket.ticket_number} ({ticket.attendee_name}), offline",
+                     entity_type="ticket", entity_id=ticket.id, event_id=event.id, actor=user)
+        results[index] = OfflineSyncResult(ticket_id=item.ticket_id, result="accepted", check_in=check_in_out(record))
+    db.commit()
+    return OfflineSyncOut(results=[results[i] for i in range(len(body.check_ins))])

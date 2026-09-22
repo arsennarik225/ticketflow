@@ -93,8 +93,7 @@ def suspend_event(body: ReasonIn, event_id: EventId, admin: Admin, db: Session =
     event.suspended_at, event.suspended_reason = utcnow(), body.reason
     audit.record(db, "event.suspended", f"Suspended by BiletFlow: {body.reason}", entity_type="event",
                  entity_id=event.id, event_id=event.id, actor=admin)
-    notify.organizer_notice(db, event, f"Event suspended: {event.title}",
-                            f"BiletFlow suspended {event.title}. Sales are stopped.\nReason: {body.reason}")
+    notify.organizer_notice(db, event, "event_suspended", body.reason)
     db.commit()
     return event_out(db, event, organizer_view=True)
 
@@ -121,8 +120,7 @@ def suspend_paid_sales(body: ReasonIn, event_id: EventId, admin: Admin, db: Sess
     event.paid_sales_suspended_at, event.paid_sales_suspended_reason = utcnow(), body.reason
     audit.record(db, "paid_sales.suspended", f"Paid sales suspended by BiletFlow: {body.reason}",
                  entity_type="event", entity_id=event.id, event_id=event.id, actor=admin)
-    notify.organizer_notice(db, event, f"Paid sales suspended: {event.title}",
-                            f"BiletFlow suspended paid ticket sales for {event.title}.\nReason: {body.reason}")
+    notify.organizer_notice(db, event, "paid_sales_suspended", body.reason)
     db.commit()
     return activation_out(db, event)
 

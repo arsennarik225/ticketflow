@@ -21,7 +21,7 @@ def test_suspended_event_is_hidden_and_stops_sales(api):
     assert api.get(f"/v1/events/{show['id']}").status_code == 404
     assert api.get("/v1/events").json()["total"] == 0
     assert confirm(api, open_checkout["id"]).json()["error"]["code"] == "event_suspended"
-    assert emails_to("org@example.com")[-1].kind == "moderation"
+    assert emails_to("org@example.com")[-1].kind == "event_suspended"
     api.post(f"/v1/admin/events/{show['id']}/unsuspend", token=boss)
     assert api.get(f"/v1/events/{show['id']}").status_code == 200
 

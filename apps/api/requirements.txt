@@ -13,3 +13,4 @@ pillow==12.3.0
 fpdf2==2.8.8
 pyyaml==6.0.3
 tzdata==2026.4
+python-multipart==0.0.32

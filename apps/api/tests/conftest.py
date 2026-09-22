@@ -39,12 +39,16 @@ def database():
     engine.dispose()
 
 
+# Reference data from schema.sql that every test keeps: settings and the venue layout.
+KEEP = ("platform_settings", "schema_info", "venues", "venue_sections", "venue_rows", "seats")
+
+
 @pytest.fixture(autouse=True)
 def clean_database(database):
     with engine.begin() as connection:
         tables = connection.scalars(text(
-            "SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
-            "AND tablename NOT IN ('platform_settings', 'schema_info')")).all()
+            "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND NOT (tablename = ANY(:keep))"),
+            {"keep": list(KEEP)}).all()
         connection.execute(text(f"TRUNCATE {', '.join(tables)} RESTART IDENTITY CASCADE"))
         assignments = ", ".join(f"{k} = :{k}" for k in database if k != "id")
         connection.execute(text(f"UPDATE platform_settings SET {assignments}"), database)

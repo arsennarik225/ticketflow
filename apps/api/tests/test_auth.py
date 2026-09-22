@@ -7,7 +7,7 @@ def test_register_verify_and_sign_in(api):
                                                   "fullName": "Dana"})
     assert created.status_code == 201
     assert created.json() | {"id": None} == {"id": None, "email": "dana@example.com", "emailVerified": False,
-                                             "fullName": "Dana", "roles": ["attendee"]}
+                                             "fullName": "Dana", "language": "ru", "roles": ["attendee"]}
     assert emails_to("dana@example.com")[0].kind == "verify_email"
     tokens = api.post("/v1/auth/verify-email", json={"token": link_token("dana@example.com", "/verify-email")}).json()
     assert tokens["user"]["emailVerified"] is True and tokens["expiresIn"] == 900

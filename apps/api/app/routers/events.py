@@ -30,8 +30,7 @@ EventId = Annotated[str, Path(alias="eventId")]
 CampaignToken = Annotated[str | None, Query(alias="campaignToken")]
 WITH_TYPES = (selectinload(Event.ticket_types), selectinload(Event.organizer))
 REQUIRED = {"title", "venue_name", "city", "starts_at", "ends_at", "time_zone", "visibility"}
-NOTIFY_ON = {"starts_at": "date and time", "ends_at": "end time", "time_zone": "time zone",
-             "venue_name": "venue", "address": "address", "city": "city"}
+NOTIFY_ON = {"starts_at", "ends_at", "time_zone", "venue_name", "address", "city"}  # email ticket holders
 
 
 # ------------------------------------------------------------------ public
@@ -162,9 +161,8 @@ def edit_event(body: EventPatchIn, event_id: EventId, user: User = Depends(organ
         setattr(event, key, value)
     audit.record(db, "event.updated", "Updated " + ", ".join(described), entity_type="event",
                  entity_id=event.id, event_id=event.id, actor=user)
-    important = [NOTIFY_ON[k] for k in changes if k in NOTIFY_ON]
-    if event.status == "published" and important:
-        notify.event_updated(db, event, "new " + ", ".join(important))
+    if event.status == "published" and NOTIFY_ON & changes.keys():
+        notify.event_updated(db, event)
     db.commit()
     return event_out(db, event, organizer_view=True)
 
@@ -233,9 +231,10 @@ def duplicate_event(event_id: EventId, user: User = Depends(organizer), db: Sess
         address=source.address, city=source.city, starts_at=source.starts_at, ends_at=source.ends_at,
         time_zone=source.time_zone, visibility=source.visibility, capacity=source.capacity,
         refund_policy=source.refund_policy, duplicated_from_id=source.id,
+        venue_id=source.venue_id, blocked_seats=list(source.blocked_seats),
         ticket_types=[
             TicketType(name=t.name, description=t.description, price=t.price, quantity=t.quantity,
-                       max_per_order=t.max_per_order, hidden=t.hidden)
+                       max_per_order=t.max_per_order, hidden=t.hidden, seat_category=t.seat_category)
             for t in source.ticket_types
         ],
     )

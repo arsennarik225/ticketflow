@@ -11,7 +11,7 @@ from sqlalchemy import text
 from app.config import settings
 from app.database import engine
 from app.errors import install_error_handlers
-from app.routers import admin, auth, checkin, checkout, events, insights, orders, support, tickets
+from app.routers import admin, auth, checkin, checkout, events, insights, orders, seating, support, tickets
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
@@ -23,7 +23,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 install_error_handlers(app)
-for module in (auth, events, tickets, checkout, orders, checkin, support, insights, admin):
+for module in (auth, events, tickets, seating, checkout, orders, checkin, support, insights, admin):
     app.include_router(module.router, prefix="/v1")
 
 

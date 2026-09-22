@@ -1,6 +1,8 @@
 """iCalendar (.ics) export (§4.11, bonus). The UID is the event id, so an updated file
 replaces the earlier calendar entry; a cancelled event exports as CANCELLED."""
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 from app.config import settings
@@ -66,3 +68,30 @@ def event_ics(event: Event) -> str:
         "END:VCALENDAR",
     ]
     return "\r\n".join(part for line in lines for part in _fold(line)) + "\r\n"
+
+
+@dataclass
+class Links:
+    ics: str
+    google: str
+    outlook: str
+
+
+def calendar_links(event: Event) -> Links:
+    """One-click 'add to calendar' links (§4.11). No calendar write access is requested."""
+    location = ", ".join(p for p in (event.venue_name, event.address, event.city) if p)
+    details = "\n\n".join(p for p in (event.description, f"{settings.web_url}/events/{event.id}") if p)
+    start, end = (moment.astimezone(UTC) for moment in (event.starts_at, event.ends_at))
+    google = urlencode({
+        "action": "TEMPLATE", "text": event.title, "details": details, "location": location,
+        "dates": f"{start:%Y%m%dT%H%M%SZ}/{end:%Y%m%dT%H%M%SZ}", "ctz": event.time_zone,
+    })
+    outlook = urlencode({
+        "path": "/calendar/action/compose", "rru": "addevent", "subject": event.title, "body": details,
+        "location": location, "startdt": f"{start:%Y-%m-%dT%H:%M:%SZ}", "enddt": f"{end:%Y-%m-%dT%H:%M:%SZ}",
+    })
+    return Links(
+        ics=f"{settings.api_url}/v1/events/{event.id}/calendar.ics",
+        google=f"https://calendar.google.com/calendar/render?{google}",
+        outlook=f"https://outlook.live.com/calendar/0/deeplink/compose?{outlook}",
+    )

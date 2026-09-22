@@ -2,10 +2,10 @@
 database has no users). Dates are relative to today, so the demo stays current.
 
 Accounts (password for all: demo12345):
-  admin@biletflow.kz      Platform Admin
-  organizer@biletflow.kz  Organizer "Steppe Events" (verified, payout connected)
-  staff@biletflow.kz      Event Admin for the scanner app
-  attendee@biletflow.kz   Attendee with orders, tickets, and a support case
+  admin@biletflow.kz      Platform Admin (emails in English)
+  organizer@biletflow.kz  Organizer "Steppe Events", verified, payout connected (Russian)
+  staff@biletflow.kz      Event Admin for the scanner app (Russian)
+  attendee@biletflow.kz   Attendee with orders, seats, and a support case (Kazakh)
 """
 import secrets
 from datetime import timedelta
@@ -17,12 +17,13 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models import (
     Campaign, CheckIn, Event, Order, OrganizerProfile, Payment, PayoutAccount, StaffAssignment,
-    SupportCase, SupportMessage, TicketType, User, utcnow,
+    SupportCase, SupportMessage, TicketType, User, Venue, utcnow,
 )
 from app.schemas import AttendeeIn, CheckoutIn, CheckoutItemIn, ConfirmIn
 from app.security import hash_password
 from app.services import audit, checkout, orders
 from app.services.events import platform_settings
+from app.services.seating import load_venue, seats_of
 
 PASSWORD = "demo12345"
 
@@ -41,16 +42,16 @@ def seed(db: Session) -> None:
     today = utcnow().replace(hour=14, minute=0, second=0, microsecond=0)  # 19:00 in Almaty
     config = platform_settings(db)
 
-    def person(email: str, name: str, admin: bool = False) -> User:
-        user = User(email=email, password_hash=hash_password(PASSWORD), full_name=name,
+    def person(email: str, name: str, language: str, admin: bool = False) -> User:
+        user = User(email=email, password_hash=hash_password(PASSWORD), full_name=name, language=language,
                     email_verified=True, is_platform_admin=admin)
         db.add(user)
         return user
 
-    person("admin@biletflow.kz", "Platform Admin", admin=True)
-    organizer = person("organizer@biletflow.kz", "Aigerim Sadykova")
-    staff = person("staff@biletflow.kz", "Nurlan Abenov")
-    attendee = person("attendee@biletflow.kz", "Dana Karimova")
+    person("admin@biletflow.kz", "Platform Admin", "en", admin=True)
+    organizer = person("organizer@biletflow.kz", "Aigerim Sadykova", "ru")
+    staff = person("staff@biletflow.kz", "Nurlan Abenov", "ru")
+    attendee = person("attendee@biletflow.kz", "Dana Karimova", "kk")
     db.flush()
     db.add(OrganizerProfile(
         user_id=organizer.id, display_name="Steppe Events", description="Concerts and meetups across Kazakhstan.",
@@ -93,21 +94,34 @@ def seed(db: Session) -> None:
     pitch = event("Shymkent Startup Pitch", 3, category="Business", venue_name="Tech Garden",
                   city="Shymkent", ticket_types=[pitch_free], description="Ten startups, five minutes each.")
 
-    db.add(Payment(purpose="activation_fee", status="succeeded", amount=config.activation_fee,
-                   payer_user_id=organizer.id, event_id=jazz.id))
+    # Assigned seating in the predefined layout; two seats are kept for cameras.
+    hall = load_venue(db, db.scalar(select(Venue.id).where(Venue.name == "BiletFlow Hall")))
+    seat = {f"{s.row.section.name} {s.row.label}{s.number}": s for s in seats_of(hall)}
+    gala = event("Almaty Philharmonic Gala", 21, category="Music", venue_name=hall.name, address=hall.address,
+                 city=hall.city, venue_id=hall.id, blocked_seats=[seat["Parterre A1"], seat["Parterre A14"]],
+                 terms_version=config.terms_version, terms_accepted_at=today,
+                 description="Seated concert: pick your seat on the map.",
+                 ticket_types=[TicketType(name="Premium", price=1200000, quantity=42, seat_category="premium"),
+                               TicketType(name="Standard", price=600000, quantity=70, seat_category="standard"),
+                               TicketType(name="Balcony", price=300000, quantity=48, seat_category="balcony")])
+
+    for paid_event in (jazz, gala):
+        db.add(Payment(purpose="activation_fee", status="succeeded", amount=config.activation_fee,
+                       payer_user_id=organizer.id, event_id=paid_event.id))
     campaign = Campaign(event_id=jazz.id, name="Early birds", code="JAZZ-EARLY", token=secrets.token_urlsafe(16),
                         discount_type="percentage", percent_off=Decimal("20"), max_redemptions=50,
                         valid_until=jazz.starts_at)
     db.add(campaign)
-    for item, can_reverse in ((meetup, True), (jazz, True), (pitch, False)):
+    for item, can_reverse in ((meetup, True), (jazz, True), (pitch, False), (gala, True)):
         db.add(StaffAssignment(event_id=item.id, email=staff.email, can_reverse_check_in=can_reverse))
     db.flush()
 
     # Sales go through the real checkout code, so totals, payments, and emails are consistent.
-    def buy(item: Event, lines, buyer: User | None = None, guests=(), campaign_token=None) -> Order:
+    def buy(item: Event, lines=(), buyer: User | None = None, guests=(), campaign_token=None, seats=()) -> Order:
         body = CheckoutIn(
             event_id=str(item.id),
             items=[CheckoutItemIn(ticket_type_id=str(t.id), quantity=n) for t, n in lines],
+            seat_ids=[str(seat[label].id) for label in seats],
             attendees=[AttendeeIn(full_name=name, email=email) for name, email in guests] or None,
             campaign_token=campaign_token,
         )
@@ -121,6 +135,9 @@ def seed(db: Session) -> None:
     buy(jazz, [(vip, 1)], guests=[("Yerlan Dzhaksybekov", "yerlan@example.com")])
     refunded = buy(jazz, [(standard, 1)], guests=[("Madina Ospanova", "madina@example.com")])
     orders.refund(db, refunded, "Cannot attend", "seed-refund", organizer)
+    buy(gala, buyer=attendee, seats=["Parterre C7", "Parterre C8"],
+        guests=[("Dana Karimova", attendee.email), ("Arman Karimov", "arman@example.com")])
+    buy(gala, seats=["Balcony A5"], guests=[("Olga Petrova", "olga@example.com")])
 
     # A finished event with attendance, for the history and analytics screens.
     pitch_order = buy(pitch, [(pitch_free, 3)], guests=[("Asel Nurova", "asel@example.com"),

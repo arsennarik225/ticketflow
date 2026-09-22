@@ -14,7 +14,7 @@ from app.deps import ApiRoute, Paging, bearer, current_user, organizer
 from app.errors import conflict, forbidden, gone, not_found, unauthorized
 from app.models import AuthSession, Notification, OrganizerProfile, PayoutAccount, User, UserToken, utcnow
 from app.schemas import (
-    ForgotPasswordIn, IdentityIn, IdentityOut, ListOf, LoginIn, NotificationOut, OrganizerProfileIn,
+    ForgotPasswordIn, IdentityIn, IdentityOut, ListOf, LoginIn, MeIn, NotificationOut, OrganizerProfileIn,
     OrganizerProfileOut, PayoutAccountIn, PayoutAccountOut, RefreshIn, RegisterIn, ResetPasswordIn,
     TokenIn, TokensOut, UserOut,
 )
@@ -63,7 +63,8 @@ def register(body: RegisterIn, db: Session = Depends(get_db)):
     email = body.email.lower()
     if db.scalar(select(User.id).where(User.email == email)):
         raise conflict("email_taken", "An account with this email already exists.")
-    user = User(email=email, password_hash=hash_password(body.password), full_name=body.full_name)
+    user = User(email=email, password_hash=hash_password(body.password), full_name=body.full_name,
+                language=body.language)
     db.add(user)
     db.flush()
     notify.verify_email(db, user, email_token(db, user, "verify_email", timedelta(hours=48)))
@@ -142,6 +143,16 @@ def reset_password(body: ResetPasswordIn, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return user_out(db, user)
+
+
+@router.patch("/me", response_model=UserOut)
+def update_me(body: MeIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Name and language (kk / ru / en) of emails and PDF tickets."""
+    for key, value in body.model_dump(exclude_unset=True).items():
+        if value is not None:
+            setattr(user, key, value)
+    db.commit()
     return user_out(db, user)
 
 

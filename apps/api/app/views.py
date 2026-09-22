@@ -12,12 +12,13 @@ from app.models import (
     User, utcnow,
 )
 from app.schemas import (
-    ActivationOut, ActivationSteps, AdminUserOut, AppliedPromo, AttendeeInfo, AttendeeOut,
-    AuditEntryOut, CampaignOut, CheckInOut, CheckoutItemOut, CheckoutSessionOut, ErrorDetail,
-    EventOut, EventReportOut, OrderOut, PaymentOut, RefundOut, StaffAssignmentOut,
+    ActivationOut, ActivationSteps, AdminUserOut, AppliedPromo, AttachmentOut, AttendeeInfo, AttendeeOut,
+    AuditEntryOut, CalendarLinks, CampaignOut, CheckInOut, CheckoutItemOut, CheckoutSessionOut, ErrorDetail,
+    EventOut, EventReportOut, OrderOut, PaymentOut, RefundOut, SeatInfo, StaffAssignmentOut,
     SupportCaseOut, SupportMessageOut, TicketOut, TicketTypeOut, UserOut, money,
 )
 from app.security import ticket_qr_payload
+from app.services.calendar import calendar_links
 from app.services.events import Activation, activations, api_status, platform_settings, sales_block
 from app.services.inventory import Counts, available, counts_by_ticket_type, event_remaining
 
@@ -41,7 +42,7 @@ def roles(db: Session, user: User) -> list[str]:
 
 def user_out(db: Session, user: User) -> UserOut:
     return UserOut(id=str(user.id), email=user.email, email_verified=user.email_verified,
-                   full_name=user.full_name, roles=roles(db, user))
+                   full_name=user.full_name, language=user.language, roles=roles(db, user))
 
 
 def admin_user_out(db: Session, user: User) -> AdminUserOut:
@@ -56,6 +57,7 @@ def ticket_type_on_sale(ticket_type: TicketType, event: Event, left: int, paid_s
     return (
         sales_block(event, now) is None
         and not ticket_type.hidden
+        and (event.venue_id is None or ticket_type.seat_category is not None)  # seated events sell seats only
         and (ticket_type.sales_start_at is None or ticket_type.sales_start_at <= now)
         and (ticket_type.sales_end_at is None or now < ticket_type.sales_end_at)
         and (ticket_type.price == 0 or paid_sales_active)
@@ -72,7 +74,7 @@ def ticket_type_out(ticket_type: TicketType, event: Event, counts: dict, remaini
         description=ticket_type.description, price=money(ticket_type.price),
         quantity=ticket_type.quantity, sales_start_at=ticket_type.sales_start_at,
         sales_end_at=ticket_type.sales_end_at, max_per_order=ticket_type.max_per_order,
-        hidden=ticket_type.hidden,
+        hidden=ticket_type.hidden, seat_category=ticket_type.seat_category,
         on_sale=ticket_type_on_sale(ticket_type, event, left, paid_sales_active, now),
         available=left, held=c.held, sold=c.sold, refunded=c.refunded, checked_in=c.checked_in,
     )
@@ -112,6 +114,8 @@ def events_out(db: Session, events: list[Event], *, organizer_view: bool,
             refund_policy=event.refund_policy, status=api_status(event, now),
             paid_sales_active=state.active,
             suspended_reason=event.suspended_reason if event.suspended_at else None,
+            venue_id=sid(event.venue_id),
+            calendar_links=CalendarLinks(**vars(calendar_links(event))),
             ticket_types=ticket_types,
         ))
     return result
@@ -222,6 +226,13 @@ def session_out(session: CheckoutSession, now: datetime | None = None) -> Checko
     )
 
 
+def seat_info(ticket: Ticket) -> SeatInfo | None:
+    seat = ticket.seat
+    if seat is None:
+        return None
+    return SeatInfo(section=seat.row.section.name, row=seat.row.label, number=seat.number, accessible=seat.accessible)
+
+
 def ticket_out(ticket: Ticket) -> TicketOut:
     event = ticket.event
     return TicketOut(
@@ -230,7 +241,7 @@ def ticket_out(ticket: Ticket) -> TicketOut:
         venue_name=event.venue_name, ticket_type_name=ticket.ticket_type.name,
         attendee=AttendeeInfo(full_name=ticket.attendee_name, email=ticket.attendee_email,
                               phone=ticket.attendee_phone),
-        status=ticket.status, qr_payload=ticket_qr_payload(ticket.id),
+        seat=seat_info(ticket), status=ticket.status, qr_payload=ticket_qr_payload(ticket.id),
         pdf_url=f"{settings.api_url}/v1/me/tickets/{ticket.id}/pdf",
     )
 
@@ -271,7 +282,8 @@ def attendees_out(db: Session, tickets: list[Ticket]) -> list[AttendeeOut]:
     return [
         AttendeeOut(ticket_id=str(t.id), ticket_number=t.ticket_number, order_id=str(t.order_id),
                     full_name=t.attendee_name, email=t.attendee_email, ticket_type_name=t.ticket_type.name,
-                    status=t.status, checked_in_at=checked_in_at.get(t.id))
+                    seat_label=t.seat.label if t.seat else None, status=t.status,
+                    checked_in_at=checked_in_at.get(t.id))
         for t in tickets
     ]
 
@@ -280,16 +292,20 @@ def check_in_out(check_in: CheckIn) -> CheckInOut:
     return CheckInOut(
         id=str(check_in.id), ticket_id=str(check_in.ticket_id), ticket_number=check_in.ticket.ticket_number,
         attendee_name=check_in.ticket.attendee_name, checked_in_at=check_in.checked_in_at,
-        checked_in_by_user_id=str(check_in.checked_in_by_user_id),
+        checked_in_by_user_id=str(check_in.checked_in_by_user_id), method=check_in.method,
     )
 
 
 # ------------------------------------------------------------------ support and history
 
 def message_out(message: SupportMessage) -> SupportMessageOut:
-    return SupportMessageOut(id=str(message.id), author_user_id=str(message.author_id),
-                             author_name=message.author.full_name, body=message.body,
-                             created_at=message.created_at)
+    return SupportMessageOut(
+        id=str(message.id), author_user_id=str(message.author_id), author_name=message.author.full_name,
+        body=message.body, created_at=message.created_at,
+        attachments=[AttachmentOut(id=str(a.id), filename=a.filename, content_type=a.content_type, size=a.size_bytes,
+                                   url=f"{settings.api_url}/v1/support/attachments/{a.id}")
+                     for a in message.attachments],
+    )
 
 
 def case_out(case: SupportCase, *, with_messages: bool) -> SupportCaseOut:

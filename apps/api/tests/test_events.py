@@ -177,3 +177,15 @@ def test_anyone_signed_in_can_report_an_event(api):
     assert api.post(f"/v1/events/{show['id']}/reports", token=reporter, json={"reason": "Fake"}).status_code == 201
     reports = api.get("/v1/admin/event-reports", token=admin(api)).json()["data"]
     assert reports[0]["reason"] == "Fake" and reports[0]["eventTitle"] == "Test Concert"
+
+
+def test_one_click_calendar_links(api):
+    token = organizer(api)
+    show, kind = on_sale(api, token, title="Jazz Night")
+    links = api.get(f"/v1/events/{show['id']}").json()["calendarLinks"]
+    assert links["ics"].endswith(f"/v1/events/{show['id']}/calendar.ics")
+    assert links["google"].startswith("https://calendar.google.com/calendar/render?action=TEMPLATE")
+    assert "text=Jazz+Night" in links["google"] and "ctz=Asia%2FAlmaty" in links["google"]
+    assert links["outlook"].startswith("https://outlook.live.com/calendar/")
+    buy(api, show["id"], kind["id"], attendees=[{"fullName": "Ann", "email": "ann@example.com"}])
+    assert links["google"] in emails_to("ann@example.com")[-1].body

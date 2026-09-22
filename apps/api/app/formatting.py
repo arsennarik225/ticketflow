@@ -1,4 +1,5 @@
-"""Human-readable money and dates for emails, PDFs, and audit descriptions."""
+"""Money and dates for emails, PDFs, and audit descriptions. Formats are numeric, so they
+read the same in Kazakh, Russian, and English."""
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -11,5 +12,5 @@ def kzt(tiyin: int) -> str:
 
 
 def local_time(moment: datetime, time_zone: str) -> str:
-    """'Sat 10 Oct 2026, 19:00 (Asia/Almaty)' in the event's own time zone."""
-    return f"{moment.astimezone(ZoneInfo(time_zone)):%a %d %b %Y, %H:%M} ({time_zone})"
+    """'06.10.2026 19:00 (Asia/Almaty)' in the event's own time zone."""
+    return f"{moment.astimezone(ZoneInfo(time_zone)):%d.%m.%Y %H:%M} ({time_zone})"

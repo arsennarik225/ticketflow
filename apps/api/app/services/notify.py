@@ -1,4 +1,4 @@
-"""Email notifications (§4.10).
+"""Email notifications (§4.10), in the recipient's language (texts in messages.py).
 
 Every email is saved in `notifications` (that is also the in-app list) and sent only
 after the transaction commits, so an action that fails never emails anyone. Locally the
@@ -15,7 +15,9 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.formatting import kzt, local_time
-from app.models import Event, Notification, Order, Refund, SupportCase, Ticket, User
+from app.models import Event, Notification, Order, OrganizerProfile, Refund, SupportCase, Ticket, User
+from app.services import messages
+from app.services.calendar import calendar_links
 
 log = logging.getLogger("biletflow.email")
 
@@ -33,6 +35,16 @@ def send(db: Session, to: str, kind: str, subject: str, body: str,
     user_id = db.scalar(select(User.id).where(User.email == to))
     db.add(Notification(user_id=user_id, email=to, kind=kind, subject=subject, body=body))
     db.info.setdefault("outbox", []).append((to, subject, body, attachments or []))
+
+
+def compose(db: Session, to: str, kind: str, language: str, attachments=None, **values) -> None:
+    subject, body = messages.email(kind, language, **values)
+    send(db, to, kind, subject, body, attachments)
+
+
+def language_of(db: Session, email: str, fallback: str = messages.DEFAULT_LANGUAGE) -> str:
+    """The recipient's own language if they have an account, otherwise `fallback`."""
+    return db.scalar(select(User.language).where(User.email == email.lower())) or fallback
 
 
 @orm_event.listens_for(Session, "after_commit")
@@ -69,94 +81,100 @@ def _link(path: str) -> str:
     return f"{settings.web_url}{path}"
 
 
-def ticket_holders(db: Session, event: Event) -> set[str]:
-    """Buyers and attendees who still hold a valid ticket for the event."""
+def _event_values(event: Event) -> dict:
+    venue = ", ".join(p for p in (event.venue_name, event.address, event.city) if p)
+    return {"event": event.title, "when": local_time(event.starts_at, event.time_zone), "venue": venue}
+
+
+def seat_text(ticket: Ticket, language: str) -> str:
+    seat = ticket.seat
+    return messages.phrase("seat", language, section=seat.row.section.name, row=seat.row.label,
+                           number=seat.number)
+
+
+def ticket_holders(db: Session, event: Event) -> dict[str, str]:
+    """Email -> language for buyers and attendees who still hold a valid ticket."""
     rows = db.execute(
-        select(Ticket.attendee_email, Order.buyer_email)
+        select(Ticket.attendee_email, Order.buyer_email, Order.language)
         .join(Order, Order.id == Ticket.order_id)
         .where(Ticket.event_id == event.id, Ticket.status.in_(("valid", "checked_in")))
     )
-    return {email for row in rows for email in row}
+    holders = {}
+    for attendee, buyer, language in rows:
+        for email in (attendee, buyer):
+            holders.setdefault(email, language)
+    return {email: language_of(db, email, language) for email, language in holders.items()}
 
 
 # ------------------------------------------------------------------ account
 
 def verify_email(db: Session, user: User, token: str) -> None:
-    send(db, user.email, "verify_email", "Confirm your BiletFlow email",
-         f"Hi {user.full_name},\n\nConfirm your email address:\n"
-         f"{_link(f'/verify-email?token={token}')}\n\nThe link is valid for 48 hours.")
+    compose(db, user.email, "verify_email", user.language, name=user.full_name,
+            link=_link(f"/verify-email?token={token}"))
 
 
 def password_reset(db: Session, user: User, token: str) -> None:
-    send(db, user.email, "password_reset", "Reset your BiletFlow password",
-         f"Hi {user.full_name},\n\nSet a new password here:\n"
-         f"{_link(f'/reset-password?token={token}')}\n\n"
-         "The link is valid for 1 hour. If you did not ask for this, ignore this email.")
+    compose(db, user.email, "password_reset", user.language, name=user.full_name,
+            link=_link(f"/reset-password?token={token}"))
+
+
+def payout_status(db: Session, profile: OrganizerProfile, masked_account: str) -> None:
+    compose(db, profile.contact_email, "payout_status", profile.user.language, account=masked_account)
 
 
 # ------------------------------------------------------------------ orders
 
 def order_confirmed(db: Session, order: Order, pdfs: list[Attachment]) -> None:
-    event = order.event
-    lines = "\n".join(f"  {t.ticket_number}  {t.ticket_type.name}  {t.attendee_name}" for t in order.tickets)
-    paid = (f"Total paid: {kzt(order.total)} (demonstration payment, no real money was charged)"
-            if order.total else "Free registration")
-    send(db, order.buyer_email, "order_confirmed", f"Your tickets: {event.title}",
-         f"Order {order.order_number} is confirmed.\n\n{event.title}\n"
-         f"{local_time(event.starts_at, event.time_zone)}\n{event.venue_name}, {event.city}\n\n"
-         f"Tickets (PDFs attached, print or show on your phone):\n{lines}\n\n{paid}\n\n"
-         f"Order: {_link(f'/orders/{order.id}')}", pdfs)
+    language = order.language
+    lines = []
+    for t in order.tickets:
+        seat = f"  {seat_text(t, language)}" if t.seat else ""
+        lines.append(f"  {t.ticket_number}  {t.ticket_type.name}  {t.attendee_name}{seat}")
+    payment = (messages.phrase("paid", language, total=kzt(order.total)) if order.total
+               else messages.phrase("free", language))
+    compose(db, order.buyer_email, "order_confirmed", language, pdfs, order=order.order_number,
+            tickets="\n".join(lines), payment=payment, calendar=calendar_links(order.event).google,
+            link=_link(f"/orders/{order.id}"), **_event_values(order.event))
 
 
-def payment_failed(db: Session, email: str, event: Event, reason: str) -> None:
-    send(db, email, "payment_failed", f"Payment failed: {event.title}",
-         f"Your payment for {event.title} did not go through: {reason}\n"
-         "No tickets were issued. You can try again while your tickets are still held.")
+def payment_failed(db: Session, email: str, event: Event, code: str, language: str) -> None:
+    compose(db, email, "payment_failed", language, reason=messages.phrase(code, language), **_event_values(event))
 
 
 def order_refunded(db: Session, order: Order, refund: Refund) -> None:
-    send(db, order.buyer_email, "order_refunded", f"Refund completed: {order.event.title}",
-         f"Order {order.order_number} was refunded in full: {kzt(refund.amount)} "
-         f"(demonstration refund, no real money moved).\nReason: {refund.reason}\n"
-         "The tickets in this order are no longer valid.")
+    compose(db, order.buyer_email, "order_refunded", order.language, order=order.order_number,
+            amount=kzt(refund.amount), reason=refund.reason, **_event_values(order.event))
 
 
 def order_cancelled(db: Session, order: Order, reason: str) -> None:
-    send(db, order.buyer_email, "order_cancelled", f"Registration cancelled: {order.event.title}",
-         f"Your registration {order.order_number} was cancelled by the organizer.\nReason: {reason}\n"
-         "The tickets in this order are no longer valid.")
+    compose(db, order.buyer_email, "order_cancelled", order.language, order=order.order_number,
+            reason=reason, **_event_values(order.event))
 
 
 # ------------------------------------------------------------------ events
 
-def event_updated(db: Session, event: Event, what: str) -> None:
-    for email in ticket_holders(db, event):
-        send(db, email, "event_updated", f"Event update: {event.title}",
-             f"{event.title} has changed: {what}.\n\nNow: {local_time(event.starts_at, event.time_zone)}\n"
-             f"{event.venue_name}, {event.city}\n\nYour tickets stay valid.\n{_link(f'/events/{event.id}')}")
+def event_updated(db: Session, event: Event) -> None:
+    for email, language in ticket_holders(db, event).items():
+        compose(db, email, "event_updated", language, link=_link(f"/events/{event.id}"), **_event_values(event))
 
 
 def event_cancelled(db: Session, event: Event, reason: str) -> None:
-    policy = f"\nRefund policy: {event.refund_policy}" if event.refund_policy else ""
-    for email in ticket_holders(db, event):
-        send(db, email, "event_cancelled", f"Cancelled: {event.title}",
-             f"{event.title} on {local_time(event.starts_at, event.time_zone)} was cancelled.\n"
-             f"Reason: {reason}{policy}\nThe organizer will handle refunds.")
+    for email, language in ticket_holders(db, event).items():
+        policy = messages.phrase("refund_policy", language, policy=event.refund_policy) if event.refund_policy else ""
+        compose(db, email, "event_cancelled", language, reason=reason, policy=policy, **_event_values(event))
 
 
-def payout_status(db: Session, profile, masked_account: str) -> None:
-    send(db, profile.contact_email, "payout_status", "Payout account connected",
-         f"Your payout account {masked_account} is connected (demonstration only: BiletFlow does not "
-         "move real money). Paid ticket sales can be activated per event.")
-
-
-def organizer_notice(db: Session, event: Event, subject: str, body: str) -> None:
-    send(db, event.organizer.contact_email, "moderation", subject, body)
+def organizer_notice(db: Session, event: Event, kind: str, reason: str) -> None:
+    """kind: event_suspended | paid_sales_suspended."""
+    compose(db, event.organizer.contact_email, kind, event.organizer.user.language, reason=reason,
+            **_event_values(event))
 
 
 # ------------------------------------------------------------------ support (§4.13)
 
-def support(db: Session, emails: set[str], case: SupportCase, kind: str, text: str) -> None:
+def support(db: Session, emails: set[str], case: SupportCase, kind: str, **values) -> None:
     for email in emails:
-        send(db, email, kind, f"Support: {case.subject}",
-             f"{text}\n\nOpen the case: {_link(f'/support/{case.id}')}")
+        language = language_of(db, email)
+        if "status" in values:
+            values = values | {"status": messages.phrase(case.status, language)}
+        compose(db, email, kind, language, subject=case.subject, link=_link(f"/support/{case.id}"), **values)

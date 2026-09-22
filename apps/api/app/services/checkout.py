@@ -15,7 +15,7 @@ from app.errors import conflict, gone, invalid, not_found, unauthorized
 from app.formatting import kzt
 from app.models import (
     Campaign, CheckoutSession, CheckoutSessionItem, Order, OrderItem, Payment,
-    PromoRedemption, Ticket, User, utcnow,
+    PromoRedemption, SeatHold, Ticket, User, utcnow,
 )
 from app.schemas import CheckoutIn, ConfirmIn
 from app.services import audit, notify, payments
@@ -23,7 +23,9 @@ from app.services.events import (
     activation, campaign_by_token, ensure_sales_open, lock_event, parse_id, platform_settings,
 )
 from app.services.inventory import available, counts_by_ticket_type, event_remaining
+from app.services.messages import DEFAULT_LANGUAGE
 from app.services.pricing import campaign_problem, check_campaign, compute_totals
+from app.services.seating import choose_seats
 from app.services.tickets import new_order_number, new_ticket_number, ticket_pdf
 
 
@@ -78,10 +80,14 @@ def open_session(db: Session, body: CheckoutIn, user: User | None) -> CheckoutSe
         raise not_found("Event")
     ensure_sales_open(event, now)
 
+    # Assigned seating: the seats decide the ticket types. General admission: the items do.
+    if event.venue_id and not body.seat_ids:
+        raise invalid("seat_selection_required", "Choose seats on the seat map (send seatIds).")
+    seats = choose_seats(db, event, body.seat_ids, now) if body.seat_ids else []
     wanted: dict[uuid.UUID, int] = {}
-    for item in body.items:
-        type_id = parse_id(item.ticket_type_id, "Ticket type")
-        wanted[type_id] = wanted.get(type_id, 0) + item.quantity
+    for type_id, quantity in ([(t.id, 1) for _, t in seats] or
+                              [(parse_id(i.ticket_type_id, "Ticket type"), i.quantity) for i in body.items]):
+        wanted[type_id] = wanted.get(type_id, 0) + quantity
     types = {t.id: t for t in event.ticket_types}
     paid_sales_active = activation(db, event).active
     counts = counts_by_ticket_type(db, [event.id], now)
@@ -124,10 +130,13 @@ def open_session(db: Session, body: CheckoutIn, user: User | None) -> CheckoutSe
         ],
         processing_fee_paid_by=config.processing_fee_paid_by,
         expires_at=now + timedelta(minutes=config.checkout_hold_minutes),
+        language=body.language or (user.language if user else DEFAULT_LANGUAGE),
         items=[
             CheckoutSessionItem(ticket_type_id=type_id, quantity=quantity, unit_price=types[type_id].price)
             for type_id, quantity in wanted.items()
         ],
+        seat_holds=[SeatHold(seat_id=seat.id, ticket_type_id=ticket_type.id, position=position)
+                    for position, (seat, ticket_type) in enumerate(seats)],
     )
     if campaign:
         check_campaign(db, campaign, set(wanted), now, session.id)
@@ -189,7 +198,7 @@ def confirm(db: Session, session_id: str, user: User | None, idempotency_key: st
             ))
             audit.record(db, "payment.failed", f"Payment of {kzt(session.total)} failed ({failure[0]})",
                          entity_type="checkout_session", entity_id=session.id, event_id=event.id, actor=user)
-            notify.payment_failed(db, buyer_email, event, failure[1])
+            notify.payment_failed(db, buyer_email, event, failure[0], session.language)
             raise PaymentFailed(*failure)
 
     order = Order(
@@ -198,21 +207,26 @@ def confirm(db: Session, session_id: str, user: User | None, idempotency_key: st
         buyer_name=buyer_name, buyer_email=buyer_email,
         subtotal=session.subtotal, discount=session.discount,
         processing_fee=session.processing_fee, processing_fee_paid_by=session.processing_fee_paid_by,
-        total=session.total,
+        total=session.total, language=session.language,
     )
-    position = 0
-    for item in session.items:
-        order.items.append(OrderItem(ticket_type_id=item.ticket_type_id, quantity=item.quantity,
-                                     unit_price=item.unit_price))
-        for _ in range(item.quantity):
-            person = (attendees[position] if position < len(attendees)
-                      else {"full_name": buyer_name, "email": buyer_email, "phone": None})
-            order.tickets.append(Ticket(
-                id=uuid.uuid4(), ticket_number=new_ticket_number(), event_id=event.id,
-                ticket_type_id=item.ticket_type_id, attendee_name=person["full_name"],
-                attendee_email=person["email"], attendee_phone=person.get("phone"),
-            ))
-            position += 1
+    # One (ticket type, seat) place per ticket: seats in the buyer's order, else item quantities.
+    prices = {i.ticket_type_id: i.unit_price for i in session.items}
+    places = ([(h.ticket_type_id, h.seat_id) for h in session.seat_holds] or
+              [(i.ticket_type_id, None) for i in session.items for _ in range(i.quantity)])
+    if not session.seat_holds:
+        order.items = [OrderItem(ticket_type_id=i.ticket_type_id, quantity=i.quantity, unit_price=i.unit_price)
+                       for i in session.items]
+    for position, (type_id, seat_id) in enumerate(places):
+        if seat_id:
+            order.items.append(OrderItem(ticket_type_id=type_id, quantity=1, unit_price=prices[type_id],
+                                         seat_id=seat_id))
+        person = (attendees[position] if position < len(attendees)
+                  else {"full_name": buyer_name, "email": buyer_email, "phone": None})
+        order.tickets.append(Ticket(
+            id=uuid.uuid4(), ticket_number=new_ticket_number(), event_id=event.id, ticket_type_id=type_id,
+            seat_id=seat_id, attendee_name=person["full_name"], attendee_email=person["email"],
+            attendee_phone=person.get("phone"),
+        ))
     db.add(order)
     db.flush()  # the order row must exist before the payment and redemption point to it
     if session.total > 0:

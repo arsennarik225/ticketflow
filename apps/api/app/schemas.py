@@ -15,8 +15,9 @@ Visibility = Literal["public", "unlisted", "private"]
 TicketStatus = Literal["valid", "checked_in", "cancelled", "refunded"]
 CaseStatus = Literal["open", "in_progress", "waiting_for_customer", "resolved"]
 CaseCategory = Literal[
-    "ticket_delivery", "payment", "refund", "event_information", "check_in", "account", "technical"
+    "ticket_delivery", "payment", "refund", "seating", "event_information", "check_in", "account", "technical"
 ]
+Language = Literal["kk", "ru", "en"]  # emails and PDF tickets (SRS §7)
 Role = Literal["attendee", "organizer", "event_admin", "platform_admin"]
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 WebUrl = Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000, pattern=r"^https?://\S+$")]
@@ -61,6 +62,12 @@ class RegisterIn(Schema):
     email: EmailStr
     password: str = Field(min_length=8, max_length=200)
     full_name: Name
+    language: Language = "ru"
+
+
+class MeIn(Schema):
+    full_name: Name | None = None
+    language: Language | None = None
 
 
 class TokenIn(Schema):
@@ -90,6 +97,7 @@ class UserOut(Schema):
     email: str
     email_verified: bool
     full_name: str | None = None
+    language: Language
     roles: list[Role]
 
 
@@ -194,6 +202,7 @@ class TicketTypeIn(Schema):
     sales_end_at: AwareDatetime | None = None
     max_per_order: int | None = Field(None, ge=1)
     hidden: bool = False
+    seat_category: str | None = Field(None, min_length=1, max_length=50)
 
 
 class TicketTypePatchIn(Schema):
@@ -205,6 +214,7 @@ class TicketTypePatchIn(Schema):
     sales_end_at: AwareDatetime | None = None
     max_per_order: int | None = Field(None, ge=1)
     hidden: bool | None = None
+    seat_category: str | None = Field(None, min_length=1, max_length=50)
 
 
 class TicketTypeOut(Schema):
@@ -218,6 +228,7 @@ class TicketTypeOut(Schema):
     sales_end_at: datetime | None = None
     max_per_order: int | None = None
     hidden: bool
+    seat_category: str | None = None
     on_sale: bool
     available: int
     held: int
@@ -233,6 +244,12 @@ class AppliedPromo(Schema):
     discount_type: Literal["percentage", "fixed_amount"] | None = None
     percent_off: float | None = None
     amount_off: Money | None = None
+
+
+class CalendarLinks(Schema):
+    ics: str
+    google: str
+    outlook: str
 
 
 class EventOut(Schema):
@@ -257,6 +274,8 @@ class EventOut(Schema):
     status: EventStatus
     paid_sales_active: bool
     suspended_reason: str | None = None
+    venue_id: str | None = None  # set = assigned seating (GET /events/{id}/seats)
+    calendar_links: CalendarLinks | None = None
     ticket_types: list[TicketTypeOut] | None = None
     applied_promo: AppliedPromo | None = None
     promo_error: ErrorDetail | None = None
@@ -362,10 +381,20 @@ class CheckoutItemIn(Schema):
 
 
 class CheckoutIn(Schema):
+    """General admission sends `items`; assigned seating sends `seat_ids` instead."""
+
     event_id: str
-    items: list[CheckoutItemIn] = Field(min_length=1, max_length=20)
+    items: list[CheckoutItemIn] = Field(default_factory=list, max_length=20)
+    seat_ids: list[str] = Field(default_factory=list, max_length=20)
     attendees: list[AttendeeIn] | None = Field(None, max_length=100)
     campaign_token: str | None = None
+    language: Language | None = None
+
+    @model_validator(mode="after")
+    def something_to_buy(self):
+        if bool(self.items) == bool(self.seat_ids):
+            raise ValueError("send either items or seatIds")
+        return self
 
 
 class PromoCodeIn(Schema):
@@ -413,6 +442,13 @@ class AttendeeInfo(Schema):
     phone: str | None = None
 
 
+class SeatInfo(Schema):
+    section: str
+    row: str
+    number: int
+    accessible: bool
+
+
 class TicketOut(Schema):
     id: str
     ticket_number: str
@@ -423,6 +459,7 @@ class TicketOut(Schema):
     venue_name: str
     ticket_type_name: str
     attendee: AttendeeInfo
+    seat: SeatInfo | None = None
     status: TicketStatus
     qr_payload: str
     pdf_url: str
@@ -475,6 +512,7 @@ class AttendeeOut(Schema):
     full_name: str
     email: str
     ticket_type_name: str
+    seat_label: str | None = None
     status: TicketStatus
     checked_in_at: datetime | None = None
 
@@ -511,6 +549,7 @@ class CheckInOut(Schema):
     attendee_name: str
     checked_in_at: datetime
     checked_in_by_user_id: str
+    method: Literal["qr", "manual", "offline"]
 
 
 class VerifyResult(Schema):
@@ -527,6 +566,113 @@ class CheckInSearchOut(Schema):
     data: list[AttendeeOut]
     registered: int
     checked_in: int
+
+
+class OfflineTicket(Schema):
+    ticket_id: str
+    ticket_number: str
+    qr_payload: str
+    attendee_name: str
+    ticket_type_name: str
+    seat_label: str | None = None
+    status: TicketStatus
+
+
+class OfflineListOut(Schema):
+    event_id: str
+    generated_at: datetime
+    tickets: list[OfflineTicket]
+
+
+class OfflineCheckInIn(Schema):
+    ticket_id: str
+    checked_in_at: AwareDatetime
+
+
+class OfflineSyncIn(Schema):
+    check_ins: list[OfflineCheckInIn] = Field(min_length=1, max_length=1000)
+
+
+class OfflineSyncResult(Schema):
+    ticket_id: str
+    result: Literal["accepted", "already_used", "cancelled", "refunded", "invalid", "wrong_event"]
+    check_in: CheckInOut | None = None
+
+
+class OfflineSyncOut(Schema):
+    results: list[OfflineSyncResult]
+
+
+# ------------------------------------------------------------------ assigned seating (§4.3.1, bonus)
+
+class CategoryCount(Schema):
+    price_category: str
+    seats: int
+    accessible: int
+
+
+class VenueSummaryOut(Schema):
+    id: str
+    name: str
+    city: str
+    address: str | None = None
+    seat_count: int
+    price_categories: list[CategoryCount]
+
+
+class VenueSeatOut(Schema):
+    id: str
+    number: int
+    price_category: str
+    accessible: bool
+
+
+class VenueRowOut(Schema):
+    id: str
+    label: str
+    seats: list[VenueSeatOut]
+
+
+class VenueSectionOut(Schema):
+    id: str
+    name: str
+    rows: list[VenueRowOut]
+
+
+class VenueOut(VenueSummaryOut):
+    sections: list[VenueSectionOut]
+
+
+class SeatingIn(Schema):
+    venue_id: str | None
+    blocked_seat_ids: list[str] = Field(default_factory=list, max_length=500)
+
+
+class MapSeat(Schema):
+    id: str
+    number: int
+    price_category: str
+    accessible: bool
+    status: Literal["available", "held", "sold", "unavailable"]
+    ticket_type_id: str | None = None
+    price: Money | None = None
+
+
+class MapRow(Schema):
+    label: str
+    seats: list[MapSeat]
+
+
+class MapSection(Schema):
+    name: str
+    rows: list[MapRow]
+
+
+class SeatMapOut(Schema):
+    event_id: str
+    venue_id: str
+    venue_name: str
+    sections: list[MapSection]
 
 
 # ------------------------------------------------------------------ support
@@ -549,11 +695,24 @@ class SupportMessageIn(Schema):
     body: Body
 
 
+class EscalateIn(Schema):
+    reason: Body | None = None
+
+
+class AttachmentOut(Schema):
+    id: str
+    filename: str
+    content_type: str
+    size: int
+    url: str
+
+
 class SupportMessageOut(Schema):
     id: str
     author_user_id: str
     author_name: str
     body: str
+    attachments: list[AttachmentOut]
     created_at: datetime
 
 

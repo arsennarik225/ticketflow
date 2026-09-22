@@ -10,6 +10,7 @@ from app.config import settings
 from app.formatting import local_time
 from app.models import Ticket
 from app.security import random_code, ticket_qr_payload
+from app.services import messages
 from app.services.qr import qr_image
 
 # Fonts with Cyrillic glyphs (Kazakh and Russian names). The Docker image ships DejaVu;
@@ -40,7 +41,8 @@ def _fonts(pdf: FPDF) -> str:
 
 
 def ticket_pdf(ticket: Ticket) -> bytes:
-    event, ticket_type = ticket.event, ticket.ticket_type
+    event, ticket_type, language = ticket.event, ticket.ticket_type, ticket.order.language
+    labels = messages.pdf_labels(language)
     pdf = FPDF(format="A4")
     pdf.set_margins(15, 15, 15)
     pdf.set_auto_page_break(False)
@@ -60,18 +62,25 @@ def ticket_pdf(ticket: Ticket) -> bytes:
     pdf.set_text_color(255, 255, 255)
     pdf.set_xy(15, 8)
     pdf.set_font(family, "B", 16)
-    pdf.cell(0, 8, "BiletFlow  ·  Admission ticket" if family != "Helvetica" else "BiletFlow - Admission ticket")
+    pdf.cell(0, 8, text(f"BiletFlow  |  {labels['title']}"))
     pdf.set_text_color(0, 0, 0)
     pdf.set_xy(15, 34)
 
     line(22, event.title, "B", 4)
-    starts, ends = local_time(event.starts_at, event.time_zone), local_time(event.ends_at, event.time_zone)
-    line(12, f"Starts: {starts}")
-    line(12, f"Ends:   {ends}", gap=4)
+    line(12, f"{labels['starts']}: {local_time(event.starts_at, event.time_zone)}")
+    line(12, f"{labels['ends']}: {local_time(event.ends_at, event.time_zone)}", gap=4)
     venue = ", ".join(part for part in (event.venue_name, event.address, event.city) if part)
-    line(12, f"Venue: {venue}", gap=4)
-    line(12, f"Ticket type: {ticket_type.name}")
-    line(12, f"Attendee: {ticket.attendee_name}", gap=6)
+    line(12, f"{labels['venue']}: {venue}", gap=4)
+    line(12, f"{labels['type']}: {ticket_type.name}")
+    line(12, f"{labels['attendee']}: {ticket.attendee_name}", gap=2)
+    if ticket.seat:
+        seat = ticket.seat
+        place = messages.phrase("seat", language, section=seat.row.section.name, row=seat.row.label,
+                                number=seat.number)
+        if seat.accessible:
+            place += f" ({messages.phrase('accessible', language)})"
+        line(14, f"{labels['seat']}: {place}", "B")
+    pdf.ln(4)
     line(20, ticket.ticket_number, "B", 4)
 
     # Large QR (80 mm) keeps it scannable from paper in colour or grayscale.
@@ -79,10 +88,5 @@ def ticket_pdf(ticket: Ticket) -> bytes:
     pdf.image(qr_image(ticket_qr_payload(ticket.id), box_size=12), x=65, y=y, w=80)
     pdf.set_xy(15, y + 86)
     pdf.set_font(family, "", 10)
-    pdf.multi_cell(
-        0, 5,
-        text("One ticket admits one person once. This printout and the ticket in your account "
-             "are the same ticket. Payment details are never printed."),
-        align="C",
-    )
+    pdf.multi_cell(0, 5, text(labels["note"]), align="C")
     return bytes(pdf.output())

@@ -128,3 +128,36 @@ def test_two_scanners_admit_a_ticket_once(api):
 
     with ThreadPoolExecutor(2) as pool:
         assert sorted(pool.map(attempt, range(2))) == [201, 409]
+
+
+def test_offline_scanning_and_sync(api):
+    token, staff, show, kind = setup(api, can_reverse=True)
+    first, second, refunded = (buy(api, show["id"], kind["id"])["tickets"][0] for _ in range(3))
+    api.post(f"/v1/organizer/orders/{refunded['orderId']}/cancel", token=token, json={"reason": "x"})
+    other, other_kind = on_sale(api, token, title="Other")
+    foreign = buy(api, other["id"], other_kind["id"])["tickets"][0]
+
+    listing = api.get(f"/v1/checkin/events/{show['id']}/offline-list", token=staff).json()
+    by_number = {t["ticketNumber"]: t for t in listing["tickets"]}
+    assert by_number[first["ticketNumber"]]["qrPayload"] == first["qrPayload"]
+    assert by_number[refunded["ticketNumber"]]["status"] == "cancelled"
+    assert api.get(f"/v1/checkin/events/{show['id']}/offline-list", token=user(api, "x@example.com")).status_code == 403
+
+    scans = [
+        {"ticketId": second["id"], "checkedInAt": "2026-01-01T18:05:00Z"},
+        {"ticketId": first["id"], "checkedInAt": "2026-01-01T18:00:00Z"},
+        {"ticketId": first["id"], "checkedInAt": "2026-01-01T18:10:00Z"},  # second device, same ticket
+        {"ticketId": refunded["id"], "checkedInAt": "2026-01-01T18:11:00Z"},
+        {"ticketId": foreign["id"], "checkedInAt": "2026-01-01T18:12:00Z"},
+        {"ticketId": "not-a-ticket", "checkedInAt": "2026-01-01T18:13:00Z"},
+        {"ticketId": first["id"], "checkedInAt": "2999-01-01T00:00:00Z"},
+    ]
+    results = api.post(f"/v1/checkin/events/{show['id']}/offline-sync", token=staff, json={"checkIns": scans})
+    assert [r["result"] for r in results.json()["results"]] == [
+        "accepted", "accepted", "already_used", "cancelled", "wrong_event", "invalid", "already_used"]
+    accepted = results.json()["results"][1]["checkIn"]
+    assert accepted["method"] == "offline" and accepted["checkedInAt"].startswith("2026-01-01T18:00:00")
+    again = check_in(api, staff, show["id"], qrPayload=first["qrPayload"])
+    assert again.status_code == 409 and again.json()["result"] == "already_used"
+    history = api.get(f"/v1/organizer/events/{show['id']}/history", token=token, params={"action": "check_in"})
+    assert sum("offline" in h["description"] for h in history.json()["data"]) == 2

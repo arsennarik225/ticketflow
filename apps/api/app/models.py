@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Column, ForeignKey, Identity, Numeric, Table, Text
+from sqlalchemy import BigInteger, Column, ForeignKey, Identity, LargeBinary, Numeric, Table, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -35,6 +35,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(unique=True)
     password_hash: Mapped[str]
     full_name: Mapped[str]
+    language: Mapped[str] = mapped_column(default="ru")  # kk | ru | en
     email_verified: Mapped[bool] = mapped_column(default=False)
     is_platform_admin: Mapped[bool] = mapped_column(default=False)
     suspended_at: Mapped[datetime | None]
@@ -109,7 +110,63 @@ class PlatformSettings(Base):
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
 
 
+# ------------------------------------------------------------------ venue layouts (assigned seating)
+
+class Venue(Base):
+    __tablename__ = "venues"
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name: Mapped[str]
+    city: Mapped[str]
+    address: Mapped[str | None]
+
+    sections: Mapped[list["VenueSection"]] = relationship(order_by="VenueSection.position")
+
+
+class VenueSection(Base):
+    __tablename__ = "venue_sections"
+    id: Mapped[uuid.UUID] = uuid_pk()
+    venue_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("venues.id"))
+    name: Mapped[str]
+    position: Mapped[int]
+
+    rows: Mapped[list["VenueRow"]] = relationship(back_populates="section", order_by="VenueRow.position")
+
+
+class VenueRow(Base):
+    __tablename__ = "venue_rows"
+    id: Mapped[uuid.UUID] = uuid_pk()
+    section_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("venue_sections.id"))
+    label: Mapped[str]
+    position: Mapped[int]
+
+    section: Mapped[VenueSection] = relationship(back_populates="rows")
+    seats: Mapped[list["Seat"]] = relationship(back_populates="row", order_by="Seat.number")
+
+
+class Seat(Base):
+    __tablename__ = "seats"
+    id: Mapped[uuid.UUID] = uuid_pk()
+    row_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("venue_rows.id"))
+    number: Mapped[int]
+    price_category: Mapped[str]
+    accessible: Mapped[bool] = mapped_column(default=False)
+
+    row: Mapped[VenueRow] = relationship(back_populates="seats")
+
+    @property
+    def label(self) -> str:
+        return f"{self.row.section.name} {self.row.label}{self.number}"
+
+
 # ------------------------------------------------------------------ events
+
+event_blocked_seats = Table(
+    "event_blocked_seats",
+    Base.metadata,
+    Column("event_id", ForeignKey("events.id"), primary_key=True),
+    Column("seat_id", ForeignKey("seats.id"), primary_key=True),
+)
+
 
 class Event(Base):
     __tablename__ = "events"
@@ -140,11 +197,14 @@ class Event(Base):
     paid_sales_suspended_reason: Mapped[str | None]
     suspended_at: Mapped[datetime | None]
     suspended_reason: Mapped[str | None]
+    venue_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("venues.id"))
     duplicated_from_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("events.id"))
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
 
     organizer: Mapped[OrganizerProfile] = relationship()
+    venue: Mapped[Venue | None] = relationship()
+    blocked_seats: Mapped[list[Seat]] = relationship(secondary=event_blocked_seats)
     ticket_types: Mapped[list["TicketType"]] = relationship(
         back_populates="event", order_by="TicketType.created_at"
     )
@@ -184,6 +244,7 @@ class TicketType(Base):
     sales_end_at: Mapped[datetime | None]
     max_per_order: Mapped[int | None]
     hidden: Mapped[bool] = mapped_column(default=False)
+    seat_category: Mapped[str | None]  # assigned seating: the seats.price_category it sells
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
 
@@ -236,12 +297,15 @@ class CheckoutSession(Base):
     total: Mapped[int] = money()
     expires_at: Mapped[datetime]
     idempotency_key: Mapped[str | None]
+    language: Mapped[str] = mapped_column(default="ru")
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
 
     event: Mapped[Event] = relationship()
     campaign: Mapped[Campaign | None] = relationship()
     items: Mapped[list["CheckoutSessionItem"]] = relationship(cascade="all, delete-orphan")
+    seat_holds: Mapped[list["SeatHold"]] = relationship(cascade="all, delete-orphan",
+                                                        order_by="SeatHold.position")
     order: Mapped["Order | None"] = relationship(back_populates="checkout_session")
 
 
@@ -255,6 +319,16 @@ class CheckoutSessionItem(Base):
     unit_price: Mapped[int] = money()
 
     ticket_type: Mapped[TicketType] = relationship()
+
+
+class SeatHold(Base):
+    __tablename__ = "seat_holds"
+    session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("checkout_sessions.id"), primary_key=True)
+    seat_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("seats.id"), primary_key=True)
+    ticket_type_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("ticket_types.id"))
+    position: Mapped[int]
+
+    seat: Mapped[Seat] = relationship()
 
 
 # ------------------------------------------------------------------ orders, tickets, money
@@ -276,6 +350,7 @@ class Order(Base):
     processing_fee: Mapped[int] = money()
     processing_fee_paid_by: Mapped[str]
     total: Mapped[int] = money()
+    language: Mapped[str] = mapped_column(default="ru")
     created_at: Mapped[datetime] = created_at()
     cancelled_at: Mapped[datetime | None]
     cancel_reason: Mapped[str | None]
@@ -298,6 +373,7 @@ class OrderItem(Base):
     ticket_type_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("ticket_types.id"))
     quantity: Mapped[int]
     unit_price: Mapped[int] = money()
+    seat_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("seats.id"))
 
 
 class Ticket(Base):
@@ -310,12 +386,14 @@ class Ticket(Base):
     attendee_name: Mapped[str]
     attendee_email: Mapped[str]
     attendee_phone: Mapped[str | None]
+    seat_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("seats.id"))
     status: Mapped[str] = mapped_column(default="valid")  # valid | checked_in | cancelled | refunded
     created_at: Mapped[datetime] = created_at()
 
     order: Mapped[Order] = relationship(back_populates="tickets")
     event: Mapped[Event] = relationship()
     ticket_type: Mapped[TicketType] = relationship()
+    seat: Mapped[Seat | None] = relationship()
 
 
 class Payment(Base):
@@ -405,6 +483,18 @@ class SupportMessage(Base):
     created_at: Mapped[datetime] = created_at()
 
     author: Mapped[User] = relationship()
+    attachments: Mapped[list["SupportAttachment"]] = relationship(order_by="SupportAttachment.created_at")
+
+
+class SupportAttachment(Base):
+    __tablename__ = "support_attachments"
+    id: Mapped[uuid.UUID] = uuid_pk()
+    message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("support_messages.id"))
+    filename: Mapped[str]
+    content_type: Mapped[str]  # image/png | image/jpeg | application/pdf
+    size_bytes: Mapped[int]
+    data: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)  # loaded only for downloads
+    created_at: Mapped[datetime] = created_at()
 
 
 # ------------------------------------------------------------------ notifications and audit
