@@ -275,15 +275,16 @@ def refund_out(refund: Refund) -> RefundOut:
 
 def attendees_out(db: Session, tickets: list[Ticket]) -> list[AttendeeOut]:
     ids = [t.id for t in tickets]
-    checked_in_at = dict(db.execute(
-        select(CheckIn.ticket_id, CheckIn.checked_in_at)
+    active = {row.ticket_id: row for row in db.execute(
+        select(CheckIn.ticket_id, CheckIn.id, CheckIn.checked_in_at)
         .where(CheckIn.ticket_id.in_(ids), CheckIn.reversed_at.is_(None))
-    ).all()) if ids else {}
+    ).all()} if ids else {}
     return [
         AttendeeOut(ticket_id=str(t.id), ticket_number=t.ticket_number, order_id=str(t.order_id),
                     full_name=t.attendee_name, email=t.attendee_email, ticket_type_name=t.ticket_type.name,
                     seat_label=t.seat.label if t.seat else None, status=t.status,
-                    checked_in_at=checked_in_at.get(t.id))
+                    checked_in_at=active[t.id].checked_in_at if t.id in active else None,
+                    check_in_id=str(active[t.id].id) if t.id in active else None)
         for t in tickets
     ]
 

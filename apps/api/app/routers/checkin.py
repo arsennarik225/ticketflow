@@ -2,7 +2,6 @@
 
 A ticket QR carries a signed payload (security.read_ticket_qr). A Campaign QR carries
 a promo link and is always rejected: it is never admission (§4.14)."""
-from datetime import timedelta
 from typing import Annotated
 from urllib.parse import parse_qs, urlparse
 
@@ -13,14 +12,14 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import ApiRoute, contains, current_user
 from app.errors import ApiError, forbidden, not_found
-from app.models import Campaign, CheckIn, Event, StaffAssignment, Ticket, User, utcnow
+from app.models import Campaign, CheckIn, Event, Ticket, User, utcnow
 from app.schemas import (
     CheckInIn, CheckInOut, CheckInSearchOut, EventOut, ListOf, OfflineListOut, OfflineSyncIn, OfflineSyncOut,
     OfflineSyncResult, OfflineTicket, VerifyIn, VerifyResult,
 )
 from app.security import read_ticket_qr, ticket_qr_payload
 from app.services import audit
-from app.services.events import checkin_access, parse_id
+from app.services.events import can_reverse_check_in, checkin_access, checkin_events, parse_id
 from app.views import attendees_out, check_in_out, events_out, ticket_out
 
 router = APIRouter(route_class=ApiRoute, tags=["Check-In"])
@@ -79,16 +78,11 @@ def verify_result(db: Session, result: str, ticket: Ticket | None) -> VerifyResu
 
 
 @router.get("/checkin/events", response_model=ListOf[EventOut])
-def my_checkin_events(user: User = Depends(current_user), db: Session = Depends(get_db)):
+def my_checkin_events(assigned_only: Annotated[bool, Query(alias="assignedOnly")] = False,
+                     user: User = Depends(current_user), db: Session = Depends(get_db)):
     """First screen of the scanner app: events the user is assigned to (by verified email)
-    or organizes, from a day before they end onwards."""
-    assigned = select(StaffAssignment.event_id).where(StaffAssignment.email == user.email)
-    mine = Event.organizer_id == user.id
-    query = (select(Event)
-             .where(or_(mine, Event.id.in_(assigned)) if user.email_verified else mine,
-                    Event.status == "published", Event.ends_at > utcnow() - timedelta(days=1))
-             .order_by(Event.starts_at))
-    events = list(db.scalars(query))
+    or organizes, until a day after they end. assignedOnly excludes ownership-only access."""
+    events = checkin_events(db, user, assigned_only=assigned_only)
     return ListOf(data=events_out(db, events, organizer_view=False, with_ticket_types=False), total=len(events))
 
 
@@ -127,7 +121,7 @@ def undo_check_in(check_in_id: Annotated[str, Path(alias="checkInId")], user: Us
     if record is None:
         raise not_found("Check-in")
     event, assignment = checkin_access(db, str(record.event_id), user)
-    if assignment is not None and not assignment.can_reverse_check_in:
+    if not can_reverse_check_in(assignment):
         raise forbidden("cannot_reverse_check_in", "You are not allowed to undo check-ins for this event.")
     if record.reversed_at is None:
         ticket = db.scalar(select(Ticket).where(Ticket.id == record.ticket_id).with_for_update())
@@ -144,8 +138,8 @@ def undo_check_in(check_in_id: Annotated[str, Path(alias="checkInId")], user: Us
 def search_attendees(event_id: EventId, q: Annotated[str | None, Query(min_length=2, max_length=100)] = None,
                      user: User = Depends(current_user), db: Session = Depends(get_db)):
     """Manual fallback when a QR will not scan, plus the registered / checked-in totals.
-    Without `q` it returns only the totals."""
-    event, _ = checkin_access(db, event_id, user)
+    Without `q` it returns totals and the current user's reversal capability."""
+    event, assignment = checkin_access(db, event_id, user)
     matches = db.scalars(
         select(Ticket).where(Ticket.event_id == event.id,
                              or_(Ticket.attendee_name.ilike(contains(q)), Ticket.attendee_email.ilike(contains(q)),
@@ -156,7 +150,8 @@ def search_attendees(event_id: EventId, q: Annotated[str | None, Query(min_lengt
         select(func.count().filter(Ticket.status.in_(("valid", "checked_in"))),
                func.count().filter(Ticket.status == "checked_in")).where(Ticket.event_id == event.id)
     ).one()
-    return CheckInSearchOut(data=attendees_out(db, list(matches)), registered=registered, checked_in=checked_in)
+    return CheckInSearchOut(data=attendees_out(db, list(matches)), registered=registered, checked_in=checked_in,
+                            can_reverse_check_in=can_reverse_check_in(assignment))
 
 
 # ------------------------------------------------------------------ offline mode (bonus)

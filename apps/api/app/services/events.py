@@ -2,16 +2,16 @@
 whether sales are open, and who may manage or scan an event."""
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import and_, select
+from sqlalchemy import Select, and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.errors import conflict, forbidden, invalid, not_found
 from app.models import (
     Campaign, Event, OrganizerProfile, Payment, PayoutAccount, PlatformSettings,
-    StaffAssignment, TicketType, User,
+    StaffAssignment, TicketType, User, utcnow,
 )
 
 
@@ -176,20 +176,36 @@ def managed_event(db: Session, event_id: str, user: User, *, write: bool = True)
     raise forbidden("not_event_organizer", "Only this event's organizer can do this.")
 
 
+def checkin_assignments(user: User) -> Select[tuple[StaffAssignment]]:
+    """Staff assignments only authorize the matching verified email."""
+    return select(StaffAssignment).where(StaffAssignment.email == user.email, user.email_verified)
+
+
+def checkin_events(db: Session, user: User, *, assigned_only: bool = False) -> list[Event]:
+    assigned = checkin_assignments(user).with_only_columns(StaffAssignment.event_id)
+    access = Event.id.in_(assigned)
+    if not assigned_only:
+        access = or_(Event.organizer_id == user.id, access)
+    query = (select(Event)
+             .where(access, Event.status == "published", Event.ends_at > utcnow() - timedelta(days=1))
+             .order_by(Event.starts_at))
+    return list(db.scalars(query))
+
+
+def can_reverse_check_in(assignment: StaffAssignment | None) -> bool:
+    """Call after checkin_access: None means the event's organizer, who may reverse."""
+    return assignment is None or assignment.can_reverse_check_in
+
+
 def checkin_access(db: Session, event_id: str, user: User) -> tuple[Event, StaffAssignment | None]:
     """The organizer has full check-in rights; Event Admins need an assignment that matches
     their verified email. Returns the assignment (None for the organizer)."""
     event = get_event(db, event_id)
     if event.organizer_id == user.id:
         return event, None
-    if user.email_verified:
-        assignment = db.scalar(
-            select(StaffAssignment).where(
-                StaffAssignment.event_id == event.id, StaffAssignment.email == user.email
-            )
-        )
-        if assignment:
-            return event, assignment
+    assignment = db.scalar(checkin_assignments(user).where(StaffAssignment.event_id == event.id))
+    if assignment:
+        return event, assignment
     raise forbidden("not_event_staff", "You are not assigned to this event.")
 
 
