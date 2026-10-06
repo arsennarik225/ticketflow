@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "BiletFlow Staff",
+    "slug": "biletflow-staff",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "platforms": ["ios", "android"],
+    "ios": { "supportsTablet": true },
+    "plugins": ["expo-secure-store"]
+  }
+}
