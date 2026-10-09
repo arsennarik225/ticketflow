@@ -21,7 +21,8 @@ test('sign-in submits once, shows progress, and logout removes the protected scr
   const h = harness();
   const login = deferred<Response>();
   const signIn = jest.spyOn(h.session, 'signIn');
-  h.fetcher.mockReturnValueOnce(login.promise).mockResolvedValueOnce(response(user)).mockResolvedValueOnce(response(undefined, 204));
+  h.fetcher.mockReturnValueOnce(login.promise).mockResolvedValueOnce(response(user))
+    .mockResolvedValueOnce(response({ data: [], total: 0 })).mockResolvedValueOnce(response(undefined, 204));
   const screen = await show(h);
   await screen.findByText('Staff sign in');
   await fireEvent.changeText(screen.getByLabelText('Email'), 'staff@example.test');
@@ -39,11 +40,11 @@ test('sign-in submits once, shows progress, and logout removes the protected scr
       await signIn.mock.results[0]?.value;
     });
   }
-  await screen.findByText("You're signed in");
+  await screen.findByText('Assigned events');
   expect(screen.queryByLabelText('Password')).toBeNull();
   await fireEvent.press(screen.getByRole('button', { name: 'Sign out' }));
   await screen.findByText('Staff sign in');
-  expect(screen.queryByText("You're signed in")).toBeNull();
+  expect(screen.queryByText('Assigned events')).toBeNull();
   expect(h.saved()).toBeNull();
 });
 
@@ -53,7 +54,8 @@ test.each(['immediate', 'deferred'] as const)('invalid credentials show a safe m
   const failure = response({ error: { code: 'invalid_credentials', message: 'Internal stack trace' } }, 401);
   const signIn = jest.spyOn(h.session, 'signIn');
   h.fetcher.mockReturnValueOnce(timing === 'immediate' ? Promise.resolve(failure) : login.promise)
-    .mockResolvedValueOnce(response(tokenResponse)).mockResolvedValueOnce(response(user));
+    .mockResolvedValueOnce(response(tokenResponse)).mockResolvedValueOnce(response(user))
+    .mockResolvedValueOnce(response({ data: [], total: 0 }));
   const screen = await show(h);
   await screen.findByText('Staff sign in');
   await fireEvent.changeText(screen.getByLabelText('Email'), 'staff@example.test');
@@ -84,9 +86,10 @@ test.each(['immediate', 'deferred'] as const)('invalid credentials show a safe m
   await fireEvent.changeText(screen.getByLabelText('Password'), 'correct-password');
   expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled();
   await fireEvent.press(screen.getByRole('button', { name: 'Sign in' }));
-  await screen.findByText("You're signed in");
+  await screen.findByText('Assigned events');
   expect(screen.queryByText('The email or password is incorrect.')).toBeNull();
-  expect(h.fetcher).toHaveBeenCalledTimes(3);
+  expect(h.fetcher).toHaveBeenCalledTimes(4);
+  expect(h.fetcher.mock.calls[3]?.[0]).toBe('https://api.example.test/v1/checkin/events?assignedOnly=true');
   expect(h.fetcher.mock.calls[1]?.[1]?.body).toBe(JSON.stringify({ email: 'retry@example.test', password: 'correct-password' }));
 });
 
@@ -96,17 +99,18 @@ test('authenticated organizer-only accounts see Access Denied and can sign out',
     .mockResolvedValueOnce(response(undefined, 204));
   const screen = await show(h);
   await screen.findByText('Event Admin access required');
-  expect(screen.queryByText("You're signed in")).toBeNull();
+  expect(screen.queryByText('Assigned events')).toBeNull();
   await fireEvent.press(screen.getByRole('button', { name: 'Sign out' }));
   await screen.findByText('Staff sign in');
 });
 
 test('restoration failure shows retry controls without exposing protected screens', async () => {
   const h = harness(tokenResponse);
-  h.fetcher.mockRejectedValueOnce(new Error('network')).mockResolvedValueOnce(response(user));
+  h.fetcher.mockRejectedValueOnce(new Error('network')).mockResolvedValueOnce(response(user))
+    .mockResolvedValueOnce(response({ data: [], total: 0 }));
   const screen = await show(h);
   await screen.findByText('Unable to restore your session');
-  expect(screen.queryByText("You're signed in")).toBeNull();
+  expect(screen.queryByText('Assigned events')).toBeNull();
   await fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
-  await screen.findByText("You're signed in");
+  await screen.findByText('Assigned events');
 });

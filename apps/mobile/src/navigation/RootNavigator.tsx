@@ -3,7 +3,7 @@ import { useAuth } from '../auth/AuthProvider';
 import { Button } from '../components/Button';
 import { colors, Notice, Screen, textStyles } from '../components/Screen';
 import { AccessDeniedScreen } from '../screens/AccessDeniedScreen';
-import { SessionReadyScreen } from '../screens/SessionReadyScreen';
+import { EventWorkflow } from '../features/events/EventWorkflow';
 import { SignInScreen } from '../screens/SignInScreen';
 
 // One screen per session state: protected screens unmount on sign-out, with no back stack to reopen.
@@ -12,7 +12,7 @@ export function RootNavigator() {
   switch (state.status) {
     case 'signedOut': return <SignInScreen key="signedOut" />;
     case 'denied': return <AccessDeniedScreen key={`denied-${state.user.id}`} user={state.user} />;
-    case 'authorized': return <SessionReadyScreen key={`authorized-${state.user.id}`} user={state.user} />;
+    case 'authorized': return <EventWorkflow key={`authorized-${state.user.id}`} user={state.user} />;
     case 'unavailable': return (
       <Screen>
         <Text accessibilityRole="header" style={textStyles.title}>
