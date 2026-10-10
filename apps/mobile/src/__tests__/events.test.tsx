@@ -153,7 +153,8 @@ test('selection loads the exact event ID, keeps its context, and maps authoritat
     method: 'GET', headers: expect.objectContaining({ Authorization: 'Bearer test-access' }),
   }));
   expect(h.secondTotals).not.toHaveBeenCalled();
-  expect(screen.queryByRole('button', { name: /undo|reverse|scan|check in/i })).toBeNull();
+  expect(screen.queryByRole('button', { name: /undo|reverse|^check in$/i })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Scan ticket QR' })).toBeEnabled();
   await fireEvent.press(screen.getByRole('button', { name: 'Back to events' }));
   await screen.findByRole('button', { name: `Open ${firstEvent.title}` });
   expect(screen.queryByText('Attendance')).toBeNull();

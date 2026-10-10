@@ -1,9 +1,10 @@
-# Event Admin mobile: assigned events and dashboard
+# Event Admin mobile: assigned events, scanning, and check-in
 
-Phase 2 adds the assigned-events list and selected-event attendance dashboard to Phase 1
-authentication. The app remains online-only. Camera scanning, ticket verification, attendee
-search, admission, Undo, organizer analytics, and offline support are not implemented.
-The existing README describes the eventual scanner; its offline instructions do not apply here.
+Phase 3 adds QR camera scanning, server verification, and deliberate admission to the Phase 1
+authentication and Phase 2 assigned-events/dashboard workflow. The app remains online-only.
+Manual attendee search, Undo, organizer analytics, and offline support are not implemented.
+See [SCANNING.md](SCANNING.md) for the Phase 3 device procedure and operational behavior.
+The existing README includes future offline functionality; those instructions do not apply here.
 
 ## Local setup (Ubuntu + iPhone / Expo Go)
 
@@ -196,7 +197,7 @@ no forced audit upgrade was applied. Reassess these with compatible upstream upd
   at most one authenticated retry, and generation checks to discard results from a signed-out session.
 - `auth/sessionStorage.ts`: one protected token-pair entry, scoped to the API URL. Native storage
   operations are serialized so logout cannot be overtaken by an earlier save.
-- `auth/AuthProvider.tsx`: React binding and profile revalidation when the app becomes active.
+- `auth/AuthProvider.tsx`: React binding and profile revalidation after returning from the background.
 - `navigation/RootNavigator.tsx`: conditional screens with no retained protected back stack.
 - `api/checkin.ts`: typed, runtime-validated assigned-event and attendance reads.
 - `features/events/EventWorkflow.tsx`: selection, assignment revalidation, access-loss handling,
@@ -204,6 +205,11 @@ no forced audit upgrade was applied. Reassess these with compatible upstream upd
 - `features/events/useRemoteResource.ts`: independent asynchronous resource state and refresh.
 - `features/events/EventDetails.tsx`: shared event identity and dates in the event's time zone.
 - `screens/AssignedEventsScreen.tsx` and `screens/EventDashboardScreen.tsx`: the Phase 2 views.
+- `api/ticketCheckin.ts`: typed verification/admission requests and endpoint-specific 409 decoding.
+- `features/scanning/TicketScanSession.ts`: ephemeral scan lifecycle, synchronous request guards,
+  stale-response protection, and uncertain-outcome reconciliation.
+- `features/scanning/QrCamera.tsx`: native camera permission, initialization, QR-only capture, and cleanup.
+- `features/scanning/TicketScanner.tsx`: operational results and deliberate admission/re-verification actions.
 
 The Phase 2 typed API wrapper uses `AuthSession.request`, retaining Phase 1 bearer
 headers, its shared rotating-refresh promise, and one authenticated retry. Every event-list request
@@ -227,9 +233,12 @@ these in-memory values do not provide offline authorization.
 
 `registered` and `checkedIn` are server totals. Progress is derived for display, with 0% for zero
 registered. Optional `canReverseCheckIn` is retained with that event's attendance state for a later
-phase; it creates no Undo UI and is never an authorization boundary. Foreground session restoration
+phase; it creates no Undo UI and is never an authorization boundary. Background-to-foreground session restoration
 temporarily unmounts protected screens, so successful restoration returns to the list. Sign-out,
 session expiry, and account changes also discard selection and totals.
+Transient inactivity from a native permission dialog pauses capture without restoring the entire
+session. An interrupted verification must be repeated; an interrupted admission has an uncertain
+outcome. A full background transition still revalidates `/me` and returns to the event list.
 
 `/me` must report both verified email and the backend-issued `event_admin` role. Organizer and
 Platform Admin roles alone grant no mobile access. Server endpoint authorization remains authoritative.

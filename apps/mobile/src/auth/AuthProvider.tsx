@@ -7,9 +7,15 @@ const AuthContext = createContext<AuthSession | null>(null);
 export function AuthProvider({ session, children }: PropsWithChildren<{ session: AuthSession }>) {
   useEffect(() => {
     void session.restore();
+    let backgrounded = AppState.currentState === 'background';
     const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'background') backgrounded = true;
+      if (state !== 'active' || !backgrounded) return;
+      backgrounded = false;
       const status = session.getState().status;
-      if (state === 'active' && (status === 'authorized' || status === 'denied')) void session.restore();
+      // Native permission dialogs briefly make iOS inactive. Only a real background transition
+      // should restore/unmount protected screens while requesting camera access.
+      if (status === 'authorized' || status === 'denied') void session.restore();
     });
     return () => subscription.remove();
   }, [session]);

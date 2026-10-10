@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { AssignedEvent, AttendanceTotals } from '../api/checkin';
 import { ApiError, errorMessage } from '../api/errors';
@@ -6,6 +6,7 @@ import { Button } from '../components/Button';
 import { colors, Notice, Screen, textStyles } from '../components/Screen';
 import { EventDetails } from '../features/events/EventDetails';
 import { useRemoteResource } from '../features/events/useRemoteResource';
+import { TicketScanner } from '../features/scanning/TicketScanner';
 
 interface Props {
   event: AssignedEvent;
@@ -20,8 +21,12 @@ interface Props {
 export function EventDashboardScreen({ event, loadAttendance, assignmentError, onRefreshAssignments,
   onAccessLost, onBack, onSignOut }: Props) {
   // This keyed screen owns the selected event's totals and canReverseCheckIn capability together.
-  // Future check-in mutations can call attendance.refresh(); the capability never authorizes a mutation.
+  // The capability never authorizes a mutation.
   const attendance = useRemoteResource(loadAttendance);
+  const [scanning, setScanning] = useState(false);
+  const closeScanner = useCallback(() => { setScanning(false); }, []);
+  const refreshAttendance = attendance.refresh;
+  const admissionConfirmed = useCallback(() => { void refreshAttendance(); }, [refreshAttendance]);
   const accessLost = attendance.error instanceof ApiError && [403, 404].includes(attendance.error.status);
   useEffect(() => { if (accessLost) onAccessLost(); }, [accessLost, onAccessLost]);
 
@@ -32,9 +37,16 @@ export function EventDashboardScreen({ event, loadAttendance, assignmentError, o
   const totals = accessLost ? null : attendance.data;
   const percentage = totals && totals.registered > 0 ? Math.round(totals.checkedIn / totals.registered * 100) : 0;
   return (
-    <Screen topAligned refreshing={attendance.loading && totals !== null} onRefresh={refresh}>
-      <Button label="Back to events" secondary onPress={onBack} />
-      <View style={styles.context}><EventDetails event={event} expanded /></View>
+    <Screen topAligned refreshing={attendance.loading && totals !== null} onRefresh={scanning ? undefined : refresh}>
+      <Button label={scanning ? 'Back to event' : 'Back to events'} secondary onPress={scanning ? closeScanner : onBack} />
+      <View style={[styles.context, scanning && styles.scannerContext]}>
+        {scanning ? <>
+          <Text accessibilityRole="header" style={styles.eventTitle}>{event.title}</Text>
+          <Text style={styles.help}>{event.venueName} · {event.city}</Text>
+        </> : <EventDetails event={event} expanded />}
+      </View>
+      {scanning && !accessLost && <TicketScanner eventId={event.id} onAdmitted={admissionConfirmed}
+        onAccessLost={onAccessLost} onBack={closeScanner} />}
       <Text accessibilityRole="header" style={textStyles.title}>Attendance</Text>
       {assignmentError != null && <Notice>{`Event assignment could not be refreshed. ${errorMessage(assignmentError)}`}</Notice>}
       {(attendance.loading && !totals || accessLost) && <View style={styles.loading}>
@@ -66,6 +78,10 @@ export function EventDashboardScreen({ event, loadAttendance, assignmentError, o
         {attendance.loading && <Text accessibilityLiveRegion="polite" style={styles.help}>Updating attendance…</Text>}
       </>}
       <Button label="Refresh totals" loading={attendance.loading} onPress={refresh} />
+      {!scanning && !accessLost && <Button label="Scan ticket QR" onPress={() => {
+        setScanning(true);
+        onRefreshAssignments();
+      }} />}
       <Button label="Sign out" secondary onPress={onSignOut} />
     </Screen>
   );
@@ -73,6 +89,8 @@ export function EventDashboardScreen({ event, loadAttendance, assignmentError, o
 
 const styles = StyleSheet.create({
   context: { marginTop: 24, marginBottom: 28 },
+  scannerContext: { marginTop: 20, marginBottom: 0 },
+  eventTitle: { fontSize: 22, fontWeight: '700', color: colors.text, marginBottom: 8 },
   loading: { gap: 12, paddingTop: 16 },
   metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginBottom: 20 },
   metric: { flexGrow: 1, flexBasis: 110 },

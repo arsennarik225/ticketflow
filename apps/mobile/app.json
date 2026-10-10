@@ -7,6 +7,14 @@
     "userInterfaceStyle": "light",
     "platforms": ["ios", "android"],
     "ios": { "supportsTablet": true },
-    "plugins": ["expo-secure-store"]
+    "plugins": [
+      "expo-secure-store",
+      ["expo-camera", {
+        "cameraPermission": "Allow BiletFlow Staff to scan admission ticket QR codes.",
+        "microphonePermission": false,
+        "recordAudioAndroid": false,
+        "barcodeScannerEnabled": true
+      }]
+    ]
   }
 }
