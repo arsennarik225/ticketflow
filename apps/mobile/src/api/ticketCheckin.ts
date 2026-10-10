@@ -86,25 +86,30 @@ function parseVerification(value: unknown, eventId: string): VerificationResult 
   return { result, ...(ticket ? { ticket } : {}), ...(previousCheckIn ? { previousCheckIn } : {}) };
 }
 
+// Both QR and manual admission use the same confirmation and operational 409 contract.
+export async function submitAdmission(session: Pick<AuthSession, 'request'>, eventId: string,
+  body: { qrPayload: string } | { ticketId: string }): Promise<AdmissionResult> {
+  try {
+    const checkIn = await session.request(`/checkin/events/${encodeURIComponent(eventId)}/check-ins`, parseCheckIn,
+      { method: 'POST', body });
+    return { kind: 'admitted', checkIn };
+  } catch (error) {
+    // This endpoint's 409 body is VerifyResult, not the generic API error envelope.
+    if (!(error instanceof ApiError) || error.status !== 409) throw error;
+    const verification = parseVerification(error.body, eventId);
+    if (verification.result === 'valid') throw new UnexpectedResponseError();
+    return { kind: 'refused', verification };
+  }
+}
+
 export function createTicketCheckinApi(session: Pick<AuthSession, 'request'>) {
   return {
     verify: (eventId: string, qrPayload: string): Promise<VerificationResult> => session.request(
       `/checkin/events/${encodeURIComponent(eventId)}/verify`, (value) => parseVerification(value, eventId),
       { method: 'POST', body: { qrPayload } },
     ),
-    async admit(eventId: string, qrPayload: string): Promise<AdmissionResult> {
-      try {
-        const checkIn = await session.request(`/checkin/events/${encodeURIComponent(eventId)}/check-ins`, parseCheckIn,
-          { method: 'POST', body: { qrPayload } });
-        return { kind: 'admitted', checkIn };
-      } catch (error) {
-        // This endpoint's 409 body is VerifyResult, not the generic API error envelope.
-        if (!(error instanceof ApiError) || error.status !== 409) throw error;
-        const verification = parseVerification(error.body, eventId);
-        if (verification.result === 'valid') throw new UnexpectedResponseError();
-        return { kind: 'refused', verification };
-      }
-    },
+    admit: (eventId: string, qrPayload: string): Promise<AdmissionResult> =>
+      submitAdmission(session, eventId, { qrPayload }),
   };
 }
 

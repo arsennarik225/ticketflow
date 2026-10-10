@@ -82,7 +82,7 @@ function parseAssignedEvents(value: unknown): AssignedEvents {
   return { data, total: value.total };
 }
 
-function parseAttendanceTotals(value: unknown): AttendanceTotals {
+export function parseAttendanceTotals(value: unknown): AttendanceTotals {
   if (!isRecord(value) || !Array.isArray(value.data) || !isCount(value.registered) || !isCount(value.checkedIn) ||
       value.checkedIn > value.registered ||
       (value.canReverseCheckIn != null && typeof value.canReverseCheckIn !== 'boolean')) {

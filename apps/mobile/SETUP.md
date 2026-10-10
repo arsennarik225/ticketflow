@@ -1,8 +1,9 @@
-# Event Admin mobile: assigned events, scanning, and check-in
+# Event Admin mobile: assigned events and entrance operations
 
-Phase 3 adds QR camera scanning, server verification, and deliberate admission to the Phase 1
-authentication and Phase 2 assigned-events/dashboard workflow. The app remains online-only.
-Manual attendee search, Undo, organizer analytics, and offline support are not implemented.
+Phase 4 adds manual attendee/ticket search, manual admission, and authorized check-in reversal
+to the Phase 1–3 authentication, assigned-events/dashboard, and QR scanner workflow. The app remains online-only.
+Organizer analytics and offline support are not implemented.
+See [OPERATIONS.md](OPERATIONS.md) for the Phase 4 architecture and device acceptance procedure.
 See [SCANNING.md](SCANNING.md) for the Phase 3 device procedure and operational behavior.
 The existing README includes future offline functionality; those instructions do not apply here.
 
@@ -112,7 +113,8 @@ the mobile app contains no test-data switch.
    and Checked in with `GET /v1/checkin/events/{eventId}/attendees` as staff, leaving `q` unset.
    Refresh totals; the event must remain selected and previous totals must not vanish while
    refresh is pending. The percentage is derived from those counts. The zero-order rehearsal
-   event must show zero counts and 0%, never `NaN` or infinity. No search or Undo control appears.
+   event must show zero counts and 0%, never `NaN` or infinity. Scan and Search open from this
+   dashboard; Undo appears only in search for an active check-in with server permission.
 3. **Switching and delayed responses:** Return to the list and select another event with
    different totals. Its loading screen must never show the previous event's counts. For a
    slow-response check, run `docker compose pause api` from the repository root, select event A,

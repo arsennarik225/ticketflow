@@ -7,6 +7,7 @@ import { colors, Notice, Screen, textStyles } from '../components/Screen';
 import { EventDetails } from '../features/events/EventDetails';
 import { useRemoteResource } from '../features/events/useRemoteResource';
 import { TicketScanner } from '../features/scanning/TicketScanner';
+import { AttendeeSearch } from '../features/search/AttendeeSearch';
 
 interface Props {
   event: AssignedEvent;
@@ -23,8 +24,9 @@ export function EventDashboardScreen({ event, loadAttendance, assignmentError, o
   // This keyed screen owns the selected event's totals and canReverseCheckIn capability together.
   // The capability never authorizes a mutation.
   const attendance = useRemoteResource(loadAttendance);
-  const [scanning, setScanning] = useState(false);
-  const closeScanner = useCallback(() => { setScanning(false); }, []);
+  const [mode, setMode] = useState<'dashboard' | 'scan' | 'search'>('dashboard');
+  const operating = mode !== 'dashboard';
+  const closeTool = useCallback(() => { setMode('dashboard'); }, []);
   const refreshAttendance = attendance.refresh;
   const admissionConfirmed = useCallback(() => { void refreshAttendance(); }, [refreshAttendance]);
   const accessLost = attendance.error instanceof ApiError && [403, 404].includes(attendance.error.status);
@@ -37,16 +39,18 @@ export function EventDashboardScreen({ event, loadAttendance, assignmentError, o
   const totals = accessLost ? null : attendance.data;
   const percentage = totals && totals.registered > 0 ? Math.round(totals.checkedIn / totals.registered * 100) : 0;
   return (
-    <Screen topAligned refreshing={attendance.loading && totals !== null} onRefresh={scanning ? undefined : refresh}>
-      <Button label={scanning ? 'Back to event' : 'Back to events'} secondary onPress={scanning ? closeScanner : onBack} />
-      <View style={[styles.context, scanning && styles.scannerContext]}>
-        {scanning ? <>
+    <Screen topAligned refreshing={attendance.loading && totals !== null} onRefresh={operating ? undefined : refresh}>
+      <Button label={operating ? 'Back to event' : 'Back to events'} secondary onPress={operating ? closeTool : onBack} />
+      <View style={[styles.context, operating && styles.scannerContext]}>
+        {operating ? <>
           <Text accessibilityRole="header" style={styles.eventTitle}>{event.title}</Text>
           <Text style={styles.help}>{event.venueName} · {event.city}</Text>
         </> : <EventDetails event={event} expanded />}
       </View>
-      {scanning && !accessLost && <TicketScanner eventId={event.id} onAdmitted={admissionConfirmed}
-        onAccessLost={onAccessLost} onBack={closeScanner} />}
+      {mode === 'scan' && !accessLost && <TicketScanner eventId={event.id} onAdmitted={admissionConfirmed}
+        onAccessLost={onAccessLost} onBack={closeTool} />}
+      {mode === 'search' && !accessLost && <AttendeeSearch eventId={event.id} timeZone={event.timeZone}
+        onReconcileTotals={admissionConfirmed} onAccessLost={onAccessLost} onBack={closeTool} />}
       <Text accessibilityRole="header" style={textStyles.title}>Attendance</Text>
       {assignmentError != null && <Notice>{`Event assignment could not be refreshed. ${errorMessage(assignmentError)}`}</Notice>}
       {(attendance.loading && !totals || accessLost) && <View style={styles.loading}>
@@ -78,10 +82,14 @@ export function EventDashboardScreen({ event, loadAttendance, assignmentError, o
         {attendance.loading && <Text accessibilityLiveRegion="polite" style={styles.help}>Updating attendance…</Text>}
       </>}
       <Button label="Refresh totals" loading={attendance.loading} onPress={refresh} />
-      {!scanning && !accessLost && <Button label="Scan ticket QR" onPress={() => {
-        setScanning(true);
+      {!operating && !accessLost && <><Button label="Scan ticket QR" onPress={() => {
+        setMode('scan');
         onRefreshAssignments();
-      }} />}
+      }} />
+      <Button label="Search attendee / ticket" secondary onPress={() => {
+        setMode('search');
+        onRefreshAssignments();
+      }} /></>}
       <Button label="Sign out" secondary onPress={onSignOut} />
     </Screen>
   );

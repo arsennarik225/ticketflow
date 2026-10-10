@@ -1,21 +1,12 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, AppState, BackHandler, StyleSheet, Text, View } from 'react-native';
-import { createTicketCheckinApi, VerificationStatus, VerifiedTicket } from '../../api/ticketCheckin';
+import { createTicketCheckinApi, VerifiedTicket } from '../../api/ticketCheckin';
 import { useAuth } from '../../auth/AuthProvider';
 import { Button } from '../../components/Button';
 import { colors, Notice, textStyles } from '../../components/Screen';
 import { QrCamera } from './QrCamera';
 import { TicketScanSession } from './TicketScanSession';
-
-const resultCopy: Record<VerificationStatus, { title: string; detail: string }> = {
-  valid: { title: 'Valid ticket', detail: 'Verified only. This attendee has not been checked in by this scan.' },
-  invalid: { title: 'Invalid ticket', detail: 'The server did not recognize a valid admission ticket. Do not admit.' },
-  cancelled: { title: 'Cancelled ticket', detail: 'This ticket is cancelled. Do not admit.' },
-  refunded: { title: 'Refunded ticket', detail: 'This ticket has been refunded. Do not admit.' },
-  already_used: { title: 'Already checked in', detail: 'This ticket already has an active check-in. Do not admit again.' },
-  wrong_event: { title: 'Ticket belongs to another event', detail: 'This ticket cannot be used at the selected event.' },
-  rejected_campaign_qr: { title: 'Campaign QR — not an admission ticket', detail: 'This promotional QR cannot grant entry. Ask for the admission ticket QR.' },
-};
+import { admissionCopy, resultCopy } from '../checkin/resultCopy';
 
 function TicketDetails({ ticket }: { ticket: VerifiedTicket }) {
   return <View style={styles.details}>
@@ -82,8 +73,8 @@ export function TicketScanner({ eventId, onAdmitted, onAccessLost, onBack }: Pro
       <Button label="Checking in…" loading onPress={() => { void flow.admit(); }} />
     </>}
     {state.phase === 'admitted' && <>
-      <Text accessibilityRole="header" accessibilityLiveRegion="polite" style={styles.result}>Check-in confirmed</Text>
-      <Text style={textStyles.body}>The server confirmed entry for this ticket.</Text>
+      <Text accessibilityRole="header" accessibilityLiveRegion="polite" style={styles.result}>{admissionCopy.title}</Text>
+      <Text style={textStyles.body}>{admissionCopy.detail}</Text>
       <Text style={styles.identity}>{state.checkIn.attendeeName}</Text>
       <Text style={styles.detail}>Ticket: {state.checkIn.ticketNumber}</Text>
     </>}
