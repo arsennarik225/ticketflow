@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "BiletFlow Staff",
+    "slug": "biletflow-staff",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "platforms": ["ios", "android"],
+    "ios": { "supportsTablet": true },
+    "plugins": [
+      "expo-secure-store",
+      ["expo-camera", {
+        "cameraPermission": "Allow BiletFlow Staff to scan admission ticket QR codes.",
+        "microphonePermission": false,
+        "recordAudioAndroid": false,
+        "barcodeScannerEnabled": true
+      }]
+    ]
+  }
+}

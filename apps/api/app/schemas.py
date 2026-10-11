@@ -515,6 +515,7 @@ class AttendeeOut(Schema):
     seat_label: str | None = None
     status: TicketStatus
     checked_in_at: datetime | None = None
+    check_in_id: str | None = None
 
 
 class NotificationOut(Schema):
@@ -532,6 +533,13 @@ class VerifyIn(Schema):
 
 
 class CheckInIn(Schema):
+    model_config = ConfigDict(json_schema_extra={"oneOf": [
+        {"required": ["qrPayload"], "properties": {
+            "qrPayload": {"type": "string", "minLength": 1}, "ticketId": {"enum": [None, ""]}}},
+        {"required": ["ticketId"], "properties": {
+            "ticketId": {"type": "string", "minLength": 1}, "qrPayload": {"enum": [None, ""]}}},
+    ]})
+
     qr_payload: str | None = Field(None, max_length=2000)
     ticket_id: str | None = None
 
@@ -566,6 +574,7 @@ class CheckInSearchOut(Schema):
     data: list[AttendeeOut]
     registered: int
     checked_in: int
+    can_reverse_check_in: bool
 
 
 class OfflineTicket(Schema):

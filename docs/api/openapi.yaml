@@ -1276,6 +1276,13 @@ paths:
       description: |
         Events this user is assigned to as Event Admin (matched by verified email) or
         organizes, until a day after they end. First screen of the mobile app.
+        Only published events are returned. With assignedOnly=true, only explicit
+        assignments matching the user's verified email count; ownership alone does not.
+      parameters:
+        - name: assignedOnly
+          in: query
+          schema: { type: boolean, default: false }
+          description: Require an explicit staff assignment; false preserves assigned or owned events.
       responses:
         '200':
           description: Events
@@ -1303,7 +1310,7 @@ paths:
               type: object
               required: [qrPayload]
               properties:
-                qrPayload: { type: string }
+                qrPayload: { type: string, minLength: 1, maxLength: 2000 }
       responses:
         '200':
           description: Result
@@ -1320,6 +1327,8 @@ paths:
         Send the scanned `qrPayload`, or a `ticketId` when the attendee was found by manual
         search. A second attempt on the same ticket returns 409 with `already_used` and the
         original check-in.
+        Exactly one identifier must be a non-empty string. The other may be omitted,
+        null, or empty (legacy behavior). Send only the intended identifier.
       parameters:
         - $ref: '#/components/parameters/EventId'
       requestBody:
@@ -1329,8 +1338,17 @@ paths:
             schema:
               type: object
               properties:
-                qrPayload: { type: string }
-                ticketId: { type: string }
+                qrPayload: { type: [string, 'null'], maxLength: 2000 }
+                ticketId: { type: [string, 'null'] }
+              oneOf:
+                - required: [qrPayload]
+                  properties:
+                    qrPayload: { type: string, minLength: 1 }
+                    ticketId: { enum: [null, ''] }
+                - required: [ticketId]
+                  properties:
+                    ticketId: { type: string, minLength: 1 }
+                    qrPayload: { enum: [null, ''] }
       responses:
         '201':
           description: Checked in
@@ -1363,10 +1381,12 @@ paths:
       summary: Search attendees manually (SRS §4.8)
       description: |
         Fallback when a QR code will not scan. Always returns the registered and checked-in
-        counts; leave out `q` to get only the counts (for the scanner's header).
+        counts and the current user's canReverseCheckIn capability. Leave out `q` for
+        an empty data array with counts and capability (for the scanner's header).
+        Search returns at most 50 matches. checkInId identifies only an active check-in.
       parameters:
         - $ref: '#/components/parameters/EventId'
-        - { name: q, in: query, schema: { type: string, minLength: 2 } }
+        - { name: q, in: query, schema: { type: string, minLength: 2, maxLength: 100 } }
       responses:
         '200':
           description: Matches
@@ -1380,6 +1400,13 @@ paths:
                     items: { $ref: '#/components/schemas/Attendee' }
                   registered: { type: integer }
                   checkedIn: { type: integer }
+                  canReverseCheckIn:
+                    type: boolean
+                    description: |
+                      Current assignment's permission, or true for this event's organizer
+                      under existing access rules. UI guidance only; DELETE independently
+                      rechecks authorization. Platform Admin status alone grants no access.
+                required: [data, registered, checkedIn, canReverseCheckIn]
         default: { $ref: '#/components/responses/Error' }
 
   /checkin/events/{eventId}/offline-list:
@@ -2415,6 +2442,9 @@ components:
         seatLabel: { type: string, description: e.g. Parterre A5 (assigned seating only). }
         status: { type: string, enum: [valid, checked_in, cancelled, refunded] }
         checkedInAt: { type: string, format: date-time }
+        checkInId:
+          type: string
+          description: Active check-in ID for reversal; omitted when no unreversed record exists.
 
     Payment:
       type: object

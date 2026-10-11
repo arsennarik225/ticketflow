@@ -1,46 +1,43 @@
-# Scanner app (to build)
+# BiletFlow Staff mobile
 
-The Event Admin app: sign in, pick an event, scan tickets, check people in (SRS §4.8).
-SRS §9 suggests React Native with Expo and TypeScript. The backend is ready: see the root README.
+The implemented Event Admin MVP uses React Native, Expo, and TypeScript for Android/iOS.
+It supports verified staff sign-in and session restoration, assigned events, attendance totals,
+QR verification with deliberate check-in, manual attendee/ticket search and admission, and
+authorized check-in reversal. All operational decisions come from the server.
 
-## Connecting to the API
+This app is online-only. Offline verification/synchronization, attendee and organizer mobile
+features, and analytics are outside its scope. Backend support for an endpoint does not imply
+that the mobile app uses it.
 
-- A phone cannot reach `localhost` on your computer. Use your computer's LAN address, e.g.
-  `http://192.168.1.20:8000/v1` (same Wi-Fi). The API listens on all interfaces.
-- Sign in with `staff@biletflow.kz` / `demo12345` (assigned to the demo events).
-- Online is the normal mode. Offline mode is a bonus, see below.
+## Setup and acceptance
 
-## Endpoints you need
+- [SETUP.md](SETUP.md): Ubuntu/iPhone/Expo Go setup, test accounts, authentication and assigned-event checks.
+- [SCANNING.md](SCANNING.md): camera permissions, QR results, admission, interrupted requests, and device checks.
+- [OPERATIONS.md](OPERATIONS.md): manual search, check-in/reversal, server reconciliation, and final iPhone acceptance.
 
-| Step | Call |
-| --- | --- |
-| Sign in / keep signed in | `POST /auth/login`, `POST /auth/refresh` |
-| Event list (first screen) | `GET /checkin/events` |
-| After a scan | `POST /checkin/events/{id}/verify` with `{ qrPayload }` — shows the result, admits nobody |
-| Admit | `POST /checkin/events/{id}/check-ins` with `{ qrPayload }` or `{ ticketId }` |
-| Counters (registered / checked in) | `GET /checkin/events/{id}/attendees` |
-| Manual search | `GET /checkin/events/{id}/attendees?q=` (2+ characters) |
-| Undo a mistake | `DELETE /checkin/check-ins/{checkInId}` (403 if the organizer did not allow it) |
+Use Node 24 and the Expo versions pinned in `package-lock.json`. Configure a reachable API URL
+ending in `/v1` through the ignored local `.env`; a physical phone needs the computer's LAN
+address instead of its `localhost`. Local HTTP is allowed in development; release builds require
+HTTPS. Public Expo environment variables must never contain secrets.
 
-## Show results clearly
+Demo accounts in SETUP.md belong only to the disposable local development database. There is no
+demo-login bypass or fixture data in the running app. Tokens are stored only in Expo SecureStore;
+ticket results and QR payloads stay in memory and are discarded when leaving their workflow.
 
-`result` is one of: `valid` (green, admit), `already_used`, `cancelled`, `refunded`, `invalid`,
-`wrong_event` (red, do not admit), `rejected_campaign_qr` (a promo poster, not a ticket).
-Use colour **and** text, since staff read it in a hurry. A second check-in of the same ticket
-returns 409 with the same shape, including `previousCheckIn`.
+## Operational boundaries
 
-Tickets for seated events include `seat` (section, row, number, accessible): show it so staff
-can direct people. Error codes and their meaning: `docs/api/error-codes.md`.
+The event list always uses `GET /v1/checkin/events?assignedOnly=true`: organizer ownership alone
+does not make an event selectable. Verification is a read, and **Valid ticket** alone is not
+admission; wait for **Check-in confirmed** after pressing Check in. Refusals use text as well as
+visual styling. Manual search accepts 2–100 trimmed characters and returns at most 50 matches.
+Undo requires an active `checkInId`, server capability, explicit confirmation, and server approval.
+An uncertain mutation outcome must be reconciled with a fresh server read.
 
-## Offline mode (bonus)
+## Validation
 
-1. Before doors open: `GET /checkin/events/{id}/offline-list` and store it on the device.
-2. Without internet: a scanned code is valid if it equals a stored `qrPayload` whose status is
-   `valid` and that this device has not scanned yet. Record `{ ticketId, checkedInAt }`.
-3. Back online: `POST /checkin/events/{id}/offline-sync` with the recorded scans. Results come
-   in the same order; `already_used` means another device admitted that ticket first.
-
-## Test tickets
-
-Buy tickets in the web app or in http://localhost:8000/docs, then open the PDF from the email
-in http://localhost:8025 and scan it from the screen. Paper and phone tickets carry the same code.
+From this directory run `npm run typecheck`, `npm test`, `npx expo-doctor`, and
+`npx expo install --check`; also run `git diff --check`. No lint/format scripts are configured.
+OPERATIONS.md includes the Android/iOS bundle command. Automated tests and bundle exports do
+not replace physical camera, VoiceOver, Larger Text, and final iPhone acceptance checks.
+See its [known backend release blocker](OPERATIONS.md#known-backend-release-blocker-from-final-qa)
+before production sign-off; the existing reversal handler needs a separate concurrency fix.
