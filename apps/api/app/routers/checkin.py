@@ -123,8 +123,13 @@ def undo_check_in(check_in_id: Annotated[str, Path(alias="checkInId")], user: Us
     event, assignment = checkin_access(db, str(record.event_id), user)
     if not can_reverse_check_in(assignment):
         raise forbidden("cannot_reverse_check_in", "You are not allowed to undo check-ins for this event.")
+    # Serialize with online/offline admission: ticket first, then check-in changes.
+    # Refresh under the lock: another request may have reversed this record and
+    # re-admitted the ticket since our initial read. Never undo that newer entry.
+    ticket = db.scalar(select(Ticket).where(Ticket.id == record.ticket_id).with_for_update()
+                       .execution_options(populate_existing=True))
+    db.refresh(record)
     if record.reversed_at is None:
-        ticket = db.scalar(select(Ticket).where(Ticket.id == record.ticket_id).with_for_update())
         record.reversed_at, record.reversed_by_user_id = utcnow(), user.id
         if ticket.status == "checked_in":
             ticket.status = "valid"
