@@ -22,7 +22,8 @@ and mutation state, following the scanner's synchronous guards and generation ch
 | QR verification / admission | Existing `/verify` and `/check-ins` POSTs | `{ "qrPayload": "<opaque scanned value>" }` |
 
 Search trims input and validates 2–100 Unicode characters before any request. Typing does not
-request; use Search or the keyboard's Search action. Editing the query immediately clears old
+request; use Search or the keyboard's Search action. Repeated submits while that query is pending
+are ignored, including keyboard submissions. Editing the query immediately clears old
 matches and invalidates outstanding responses. Responses must have recognized ticket statuses,
 unique ticket IDs, valid operational fields/counts, and a Boolean reversal capability. The UI
 labels matches as capped at 50 and asks staff to narrow a full result set.
@@ -38,7 +39,8 @@ admission, including when the row changed since searching. QR and manual request
 
 Undo requires an active server `checkInId` and `canReverseCheckIn === true` from search. It opens
 a modal identifying the attendee and ticket, with Cancel and a destructive Confirm reversal
-button. The capability is UI guidance; DELETE authorizes again on the server. No ticket ID is
+button. The scrollable dialog respects device safe areas, including with Larger Text enabled.
+The capability is UI guidance; DELETE authorizes again on the server. No ticket ID is
 substituted for a check-in ID, and no local history is deleted.
 
 Confirmed mutation outcomes are independent of subsequent read errors. Each completed mutation
@@ -182,6 +184,59 @@ the attendees GETs only after a successful POST/DELETE, preserving the mutation 
 confirmation must survive; both stale totals and stale matches must be labelled. Restore reads
 and Refresh results/totals. Automated tests additionally exercise malformed responses and a
 record-level DELETE 404, without modifying backend code or deleting audit records.
+
+## Known backend release blocker from final QA
+
+Source review found an existing race in
+[`undo_check_in`](../api/app/routers/checkin.py): it loads the check-in and tests `reversed_at`
+before acquiring the ticket row lock, without refreshing that check-in afterward. This behavior
+also exists on the base branch; this mobile QA phase does not change backend code.
+
+The problematic interleaving is:
+
+1. Request A loads active check-in C1 and pauses before locking the ticket.
+2. Request B reverses C1 and commits.
+3. Another admission creates active check-in C2 for the same ticket and commits.
+4. A resumes with its stale C1 object, locks the ticket, and sets its status to `valid`, while
+   C2 remains active. Counts and QR verification can then contradict the active check-in.
+
+A controlled source-level simulation of the existing handler reproduced that inconsistent
+state. It was **not** a live PostgreSQL concurrency test. Release sign-off requires a separate
+backend fix and a database-backed regression for this interleaving. Mobile single-request guards
+cannot coordinate multiple devices. The mobile contract and normal reversal tests still pass;
+they do not establish server correctness for this concurrent case.
+
+## Final iPhone acceptance gate
+
+After the setup and detailed cases above, run this complete sequence on the release candidate.
+Mark a step complete only after observing it on the phone; Jest camera events are simulated.
+
+- Sign out, try invalid credentials, then sign in with verified assigned staff. Check loading,
+  safe errors, password clearing after failure, and successful retry. Reopen the app to check
+  restoration; use SETUP.md's expiry/revocation procedure to check renewed and ended sessions.
+- Compare the list to `GET /v1/checkin/events?assignedOnly=true`. Select A, compare totals to
+  the attendees endpoint, switch to B, and confirm A's counts and operational state disappear.
+  Check an organizer-only account is denied and an assigned organizer sees only assigned events.
+- Deny/recover camera permission, scan a valid ticket, and confirm verification alone does not
+  admit it. Press Check in once, wait for confirmation, then Scan next. Rescan the used ticket;
+  test wrong-event, campaign, invalid, cancelled, and refunded results as in SCANNING.md.
+- Open Search. Check trimming, 2–100 characters, no-match/error states, and repeated keyboard
+  submits during a delayed request. Manually admit another ticket; test a stale-row 409 via
+  Swagger. Confirm the UI waits for admission instead of prematurely requesting a refresh.
+- With permission false, confirm Undo is absent. With permission true, open the identifying
+  dialog, cancel once, then confirm. Check counts, current status, and disappearance of the active
+  ID. Test permission removed after rendering and an already-reversed record using the steps above.
+- Check scanner → search after admission and search → scanner after reversal. Then test stopped
+  API, failed refresh, and dropped mutation response through the documented proxy: preserve
+  confirmed results, mark stale reads, and never invent a success for a lost response.
+- Start a delayed search, sign out, sign in as a different assigned staff account, select its
+  event, then let the old response finish. No old query, person, active ID, or event may appear;
+  an old session's late 401 must not sign out the new account. Also test assignment removal and
+  background/foreground revalidation. Logout must leave no protected back navigation.
+- Enable VoiceOver and Larger Text. Check long names, status announcements, all touch targets,
+  keyboard Search, totals, scrolling, and the reversal dialog's Cancel/Confirm controls. On a
+  notched iPhone, scroll a tall dialog to both ends and check the notch/home indicator do not
+  cover controls. Record the device, OS/Expo Go versions, date, and any failures for handoff.
 
 ## Validation
 

@@ -1,7 +1,8 @@
 # Phase 3: QR verification and admission
 
 This phase adds QR camera scanning for the selected assigned event, server verification,
-and a separate **Check in** action. Manual search, Undo, offline verification/sync, and
+and a separate **Check in** action. Manual search and authorized Undo are now available from
+the same event dashboard; see [OPERATIONS.md](OPERATIONS.md). Offline verification/sync and
 organizer/attendee mobile functionality remain outside this app.
 
 ## Camera and architecture
@@ -80,7 +81,8 @@ authenticated retry after token rotation; an ended session returns to sign-in.
 
 1. Start the existing backend from `~/Desktop/ticketflow` with `docker compose up --build`
    if needed. Check `http://localhost:8000/docs`. Use a disposable development database:
-   successful admission changes real test ticket state and this app has no Undo feature.
+   successful admission changes real test ticket state. Authorized staff can reverse a check-in
+   through manual search; the scanner itself has no Undo button.
 2. Use Node 24, enter `apps/mobile`, and run `npm ci` if dependencies are absent or stale.
    Preserve `.env`; set `EXPO_PUBLIC_API_URL=http://<UBUNTU-LAN-IP>:8000/v1`. Put the phone
    and Ubuntu on the same network. Open `http://<UBUNTU-LAN-IP>:8000/health` in iPhone Safari.

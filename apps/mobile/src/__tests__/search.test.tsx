@@ -131,6 +131,24 @@ test('changing a query clears results immediately and discards an older response
   expect(screen.getByDisplayValue('Newer')).toBeTruthy();
 });
 
+test('keyboard Search cannot start duplicate requests while the same query is loading', async () => {
+  const h = scenario();
+  const pending = deferred<Response>();
+  h.search.mockReturnValueOnce(pending.promise);
+  const screen = await openSearch(h);
+  await search(screen);
+  const input = screen.getByLabelText('Name, email, or ticket number');
+  try {
+    await fireEvent(input, 'submitEditing');
+    await fireEvent(input, 'submitEditing');
+    expect(h.search).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Search' })).toBeDisabled();
+  } finally {
+    await act(async () => { pending.resolve(response(matches())); });
+  }
+  await screen.findByText('Status: Valid ticket');
+});
+
 test.each([false, true])('manual admission refreshes results and totals; confirmation survives refresh failure=%s', async (fail) => {
   const h = scenario();
   const screen = await openSearch(h);
@@ -170,6 +188,63 @@ test('409 refusal replaces the apparent valid ticket with current server state a
   expect(screen.queryByText('Check-in confirmed')).toBeNull();
   expect(screen.getByText(/Check-in was refused/)).toBeTruthy();
   expect(screen.queryByRole('button', { name: `Check in ${searchRow.ticketNumber}` })).toBeNull();
+});
+
+test('pending manual admission shows waiting guidance, then a failed reconciliation shows stale guidance', async () => {
+  const h = scenario();
+  const screen = await openSearch(h);
+  await search(screen);
+  const pending = deferred<Response>();
+  h.admit.mockReturnValueOnce(pending.promise);
+  h.search.mockRejectedValueOnce(new Error('Unavailable'));
+  await fireEvent.press(await screen.findByRole('button', { name: `Check in ${searchRow.ticketNumber}` }));
+  expect(screen.getByText(/Submitting check-in/)).toBeTruthy();
+  expect(screen.queryByText(/Showing the last loaded matches/)).toBeNull();
+  expect(screen.getByRole('button', { name: `Check in ${searchRow.ticketNumber}` })).toBeDisabled();
+  await act(async () => { pending.resolve(response(confirmedCheckIn, 201)); });
+  await screen.findByText('Check-in confirmed');
+  expect(screen.getByText(/Showing the last loaded matches/)).toBeTruthy();
+  expect(screen.queryByText(/Submitting check-in/)).toBeNull();
+});
+
+test.each([200, 401])('a previous account’s delayed search (%s) cannot affect a newly signed-in account', async (status) => {
+  const h = scenario();
+  const screen = await openSearch(h);
+  const pending = deferred<Response>();
+  h.search.mockReturnValueOnce(pending.promise);
+  await search(screen, 'Old account query');
+  await fireEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+  await screen.findByText('Staff sign in');
+
+  const nextUser = { ...user, id: 'second-staff-id', email: 'second@example.test' };
+  const nextRow = { ...searchRow, fullName: 'New account attendee', ticketId: 'new-account-ticket' };
+  const previousFetcher = h.fetcher.getMockImplementation()!;
+  h.fetcher.mockImplementation(async (input, options) => {
+    const url = new URL(String(input));
+    if (url.pathname === '/v1/auth/login') return response({ ...tokenResponse, user: nextUser });
+    if (url.pathname === '/v1/me') return response(nextUser);
+    if (url.pathname === '/v1/checkin/events') return response({ data: [otherEvent], total: 1 });
+    if (url.pathname.endsWith('/attendees') && url.searchParams.has('q')) return response(matches(nextRow));
+    return previousFetcher(input, options);
+  });
+  await fireEvent.changeText(screen.getByLabelText('Email'), nextUser.email);
+  await fireEvent.changeText(screen.getByLabelText('Password'), 'test-password');
+  await fireEvent.press(screen.getByRole('button', { name: 'Sign in' }));
+  await screen.findByText(nextUser.email);
+  expect(screen.queryByText(scanEvent.title)).toBeNull();
+  await fireEvent.press(screen.getByRole('button', { name: `Open ${otherEvent.title}` }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Search attendee / ticket' }));
+  expect(screen.getByDisplayValue('')).toBeTruthy();
+  await search(screen, 'New account query');
+  await screen.findByText(nextRow.fullName);
+  await act(async () => {
+    pending.resolve(response(status === 200 ? matches(checkedRow) : { error: { code: 'session_ended' } }, status));
+  });
+  expect(screen.getByText(nextRow.fullName)).toBeTruthy();
+  expect(screen.getByDisplayValue('New account query')).toBeTruthy();
+  expect(screen.queryByText(searchRow.fullName)).toBeNull();
+  expect(screen.queryByText('Staff sign in')).toBeNull();
+  expect(h.session.getState()).toMatchObject({ status: 'authorized', user: nextUser });
 });
 
 test.each([false, true])('capability=%s controls Undo for an active check-in, without exposing internal IDs', async (permission) => {

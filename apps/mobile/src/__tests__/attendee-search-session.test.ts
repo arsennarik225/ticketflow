@@ -31,6 +31,21 @@ test('typing clears old rows and does not request; invalid submission stays loca
   expect(h.api.search).toHaveBeenCalledTimes(1);
 });
 
+test('repeated submissions share the pending query; editing still permits a new query', async () => {
+  const h = setup();
+  const first = deferred<AttendeeMatches>();
+  h.api.search.mockReturnValueOnce(first.promise);
+  const pending = h.flow.search();
+  await h.flow.search();
+  expect(h.api.search).toHaveBeenCalledTimes(1);
+  h.flow.setQuery('New query');
+  await h.flow.search();
+  expect(h.api.search).toHaveBeenCalledTimes(2);
+  first.resolve(matches(checkedRow));
+  await pending;
+  expect(h.flow.getState()).toMatchObject({ query: 'New query', data: matches(), fresh: true });
+});
+
 test.each(['success', 'error', 'forbidden'] as const)('old-query %s cannot overwrite a newer query or revoke its access', async (result) => {
   const h = setup();
   const old = deferred<AttendeeMatches>();

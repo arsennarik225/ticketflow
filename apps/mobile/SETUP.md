@@ -5,7 +5,7 @@ to the Phase 1–3 authentication, assigned-events/dashboard, and QR scanner wor
 Organizer analytics and offline support are not implemented.
 See [OPERATIONS.md](OPERATIONS.md) for the Phase 4 architecture and device acceptance procedure.
 See [SCANNING.md](SCANNING.md) for the Phase 3 device procedure and operational behavior.
-The existing README includes future offline functionality; those instructions do not apply here.
+The [README](README.md) summarizes the implemented scope and links these guides.
 
 ## Local setup (Ubuntu + iPhone / Expo Go)
 
@@ -73,6 +73,10 @@ Existing assignments are managed with:
 - `POST /v1/organizer/events/{eventId}/staff`, body
   `{"email":"staff@biletflow.kz","canReverseCheckIn":false}`.
 - `DELETE /v1/organizer/events/{eventId}/staff/{assignmentId}` to remove that assignment.
+
+POST creates an assignment; it does not update an existing one. To change reversal permission,
+delete and recreate that assignment. Keep another assignment during permission tests so the
+account retains its Event Admin role. OPERATIONS.md describes the timing for permission-loss tests.
 
 Keep at least two currently available events assigned for switching tests. The backend list
 returns only published events ending less than one day ago or in the future; old seeded events
@@ -177,9 +181,14 @@ npx expo-doctor
 npx expo install --check
 ```
 
-There are no configured lint or format scripts. An optional Metro bundle check is
-`npx expo export --platform android --platform ios --output-dir /tmp/ticketflow-mobile-phase2-export`;
-bundle export does not replace native-device testing.
+There are no configured lint or format scripts; run `git diff --check`. For a native bundle check
+without loading the local `.env`:
+
+```sh
+EXPO_NO_DOTENV=1 EXPO_PUBLIC_API_URL=https://api.example.test/v1 npx expo export --platform android --platform ios --max-workers 1 --output-dir /tmp/ticketflow-mobile-qa-export
+```
+
+Bundle export does not replace native-device testing or produce a signed store binary.
 
 Tests use controlled fetch/native-storage substitutes only in test files. Production requests
 always go to the configured backend. There is no offline mode, fake event data, or demo login.
@@ -206,12 +215,18 @@ no forced audit upgrade was applied. Reassess these with compatible upstream upd
   and Android hardware-back behavior.
 - `features/events/useRemoteResource.ts`: independent asynchronous resource state and refresh.
 - `features/events/EventDetails.tsx`: shared event identity and dates in the event's time zone.
-- `screens/AssignedEventsScreen.tsx` and `screens/EventDashboardScreen.tsx`: the Phase 2 views.
+- `screens/AssignedEventsScreen.tsx` and `screens/EventDashboardScreen.tsx`: event selection,
+  totals, and entry to the scanner or manual search.
 - `api/ticketCheckin.ts`: typed verification/admission requests and endpoint-specific 409 decoding.
 - `features/scanning/TicketScanSession.ts`: ephemeral scan lifecycle, synchronous request guards,
   stale-response protection, and uncertain-outcome reconciliation.
 - `features/scanning/QrCamera.tsx`: native camera permission, initialization, QR-only capture, and cleanup.
 - `features/scanning/TicketScanner.tsx`: operational results and deliberate admission/re-verification actions.
+- `api/attendeeSearch.ts`: validated search responses and manual admission/reversal requests.
+- `features/search/AttendeeSearchSession.ts`: query generations, submission/mutation guards,
+  explicit reversal confirmation, and server reconciliation.
+- `features/search/AttendeeSearch.tsx`: search controls, operational cards, and the reversal dialog.
+- `features/checkin/resultCopy.ts`: shared QR/manual status and admission wording.
 
 The Phase 2 typed API wrapper uses `AuthSession.request`, retaining Phase 1 bearer
 headers, its shared rotating-refresh promise, and one authenticated retry. Every event-list request
@@ -234,8 +249,9 @@ Transient errors preserve earlier content with a stale-data notice;
 these in-memory values do not provide offline authorization.
 
 `registered` and `checkedIn` are server totals. Progress is derived for display, with 0% for zero
-registered. Optional `canReverseCheckIn` is retained with that event's attendance state for a later
-phase; it creates no Undo UI and is never an authorization boundary. Background-to-foreground session restoration
+registered. Optional `canReverseCheckIn` is retained with that event's attendance state. Manual
+search requires the capability in its own response and uses it with an active check-in ID to
+offer Undo; DELETE still authorizes independently. Background-to-foreground session restoration
 temporarily unmounts protected screens, so successful restoration returns to the list. Sign-out,
 session expiry, and account changes also discard selection and totals.
 Transient inactivity from a native permission dialog pauses capture without restoring the entire

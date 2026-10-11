@@ -46,7 +46,9 @@ export class AttendeeSearchSession {
   };
 
   search = async (): Promise<void> => {
-    if (!this.active || this.pending) return;
+    // Keyboard submit can fire while the Search button is disabled. Editing the query
+    // resets loading and its generation, so a genuinely new query can still start immediately.
+    if (!this.active || this.pending || this.state.loading) return;
     const query = this.state.query.trim();
     const validation = queryError(query);
     const generation = ++this.generation;

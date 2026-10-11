@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { ActivityIndicator, BackHandler, Keyboard, Modal, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { createAttendeeSearchApi, queryError } from '../../api/attendeeSearch';
 import { useAuth } from '../../auth/AuthProvider';
 import { Button } from '../../components/Button';
@@ -58,18 +59,20 @@ export function AttendeeSearch({ eventId, timeZone, onReconcileTotals, onAccessL
       <Text accessibilityLiveRegion="polite" style={styles.help}>Searching this event…</Text>
     </View>}
     {state.error && <Notice>{state.error}</Notice>}
-    {state.data && !state.fresh && !state.loading && <Notice>Showing the last loaded matches. Refresh results before checking in or reversing a check-in.</Notice>}
+    {state.data && !state.fresh && !state.loading && !pending && <Notice>Showing the last loaded matches. Refresh results before checking in or reversing a check-in.</Notice>}
     {!state.data?.data.some((row) => row.ticketId === state.mutation?.row.ticketId) && mutationNotice}
     {state.mutation?.kind === 'confirm' && <Modal transparent animationType="fade" onRequestClose={flow.cancelReversal}>
-      <ScrollView style={styles.backdrop} contentContainerStyle={styles.modalContent}>
-        <View accessibilityViewIsModal style={styles.confirmation}>
-          <Text accessibilityRole="header" style={styles.title}>Reverse this check-in?</Text>
-          <Text style={styles.label}>{state.mutation.row.fullName} · {state.mutation.row.ticketNumber}</Text>
-          <Text style={styles.help}>This reverses the recorded admission. Confirm only if this attendee’s check-in should be undone. The audit record is kept.</Text>
-          <Button label="Cancel reversal" secondary onPress={flow.cancelReversal} />
-          <Button label="Confirm reversal" destructive onPress={() => { void flow.confirmReversal(); }} />
-        </View>
-      </ScrollView>
+      <SafeAreaView style={styles.backdrop}>
+        <ScrollView contentContainerStyle={styles.modalContent}>
+          <View accessibilityViewIsModal style={styles.confirmation}>
+            <Text accessibilityRole="header" style={styles.title}>Reverse this check-in?</Text>
+            <Text style={styles.label}>{state.mutation.row.fullName} · {state.mutation.row.ticketNumber}</Text>
+            <Text style={styles.help}>This reverses the recorded admission. Confirm only if this attendee’s check-in should be undone. The audit record is kept.</Text>
+            <Button label="Cancel reversal" secondary onPress={flow.cancelReversal} />
+            <Button label="Confirm reversal" destructive onPress={() => { void flow.confirmReversal(); }} />
+          </View>
+        </ScrollView>
+      </SafeAreaView>
     </Modal>}
     {state.data && <>
       <Text accessibilityLiveRegion="polite" style={styles.help}>
@@ -105,7 +108,7 @@ const styles = StyleSheet.create({
   detail: { fontSize: 16, lineHeight: 24, color: colors.text },
   row: { borderTopWidth: 1, borderColor: colors.border, paddingVertical: 20, gap: 8 },
   outcome: { gap: 10, paddingVertical: 12 },
-  backdrop: { backgroundColor: '#17233ACC' },
+  backdrop: { flex: 1, backgroundColor: '#17233ACC' },
   modalContent: { flexGrow: 1, justifyContent: 'center', padding: 24 },
   confirmation: { backgroundColor: colors.surface, width: '100%', maxWidth: 600, alignSelf: 'center', borderWidth: 2,
     borderColor: colors.error, borderRadius: 12, padding: 16, gap: 12 },
