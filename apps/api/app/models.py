@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Column, ForeignKey, Identity, LargeBinary, Numeric, Table, Text
+from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Identity, LargeBinary, Numeric, Table, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -525,3 +525,10 @@ class AuditEntry(Base):
 
 
 schema_info = Table("schema_info", Base.metadata, Column("checksum", Text, nullable=False))
+
+# Which files in db/migrations/ this database has run. See app/migrations.py.
+schema_migrations = Table(
+    "schema_migrations", Base.metadata,
+    Column("filename", Text, primary_key=True),
+    Column("applied_at", DateTime(timezone=True), nullable=False),
+)

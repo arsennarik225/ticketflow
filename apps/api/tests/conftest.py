@@ -40,7 +40,8 @@ def database():
 
 
 # Reference data from schema.sql that every test keeps: settings and the venue layout.
-KEEP = ("platform_settings", "schema_info", "venues", "venue_sections", "venue_rows", "seats")
+KEEP = ("platform_settings", "schema_info", "schema_migrations",
+        "venues", "venue_sections", "venue_rows", "seats")
 
 
 @pytest.fixture(autouse=True)
