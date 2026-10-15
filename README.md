@@ -39,6 +39,7 @@ Payments are simulated. Use `tok_success`, `tok_declined`, or `tok_insufficient_
 docker compose run --rm api pytest   # run the backend tests
 docker compose logs -f api           # watch the API log
 docker compose down -v               # stop and wipe the database (demo data returns on next start)
+                                     # a schema change no longer needs this: see docs/database.md
 scripts/backup.sh                    # back up the database (restore: scripts/restore.sh <file>)
 ```
 
