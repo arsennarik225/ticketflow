@@ -49,6 +49,7 @@ CREATE TABLE user_tokens (
     used_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE INDEX user_tokens_user_idx ON user_tokens (user_id);
 
 -- Having a profile is what makes a user an organizer.
 CREATE TABLE organizer_profiles (
@@ -281,6 +282,7 @@ CREATE TABLE checkout_sessions (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX checkout_sessions_open_idx ON checkout_sessions (event_id, expires_at) WHERE status = 'open';
+CREATE INDEX checkout_sessions_user_idx ON checkout_sessions (user_id);
 
 CREATE TABLE checkout_session_items (
     session_id UUID NOT NULL REFERENCES checkout_sessions(id) ON DELETE CASCADE,
@@ -440,6 +442,7 @@ CREATE TABLE support_cases (
 );
 CREATE INDEX support_cases_requester_idx ON support_cases (requester_id);
 CREATE INDEX support_cases_event_idx ON support_cases (event_id);
+CREATE INDEX support_cases_assignee_idx ON support_cases (assignee_id);
 
 CREATE TABLE support_messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -507,6 +510,10 @@ CREATE TRIGGER audit_log_append_only BEFORE UPDATE OR DELETE ON audit_log
 CREATE TABLE schema_info (
     checksum TEXT NOT NULL
 );
+
+-- A database also has a schema_migrations table, recording which files in db/migrations/
+-- it has run. app/migrations.py creates it, because whether it exists is how the API tells
+-- a database that predates migrations from one that tracks them.
 
 
 -- ============================================================ The predefined layout

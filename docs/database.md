@@ -142,9 +142,30 @@ ticket type (`ticket_types.seat_category`).
 
 ## Changing the schema
 
-1. Edit `apps/api/db/schema.sql` and the matching model in `apps/api/app/models.py`.
-2. Reset your local database: `docker compose down -v && docker compose up --build`.
-   The API refuses to start on a database built from an older schema and prints this command.
-3. Run the tests; `tests/test_schema.py` catches a model that no longer matches.
+A change goes in two places, because a database can be built two ways:
 
-Once there is real data to keep, switch to migrations (for example Alembic) instead of resets.
+- **`db/schema.sql`** builds a new database. It stays the current, readable picture of the
+  schema.
+- **`db/migrations/`** brings an existing database up to date, so nobody loses their local
+  data when they pull your change.
+
+Steps:
+
+1. Edit `apps/api/db/schema.sql` and the matching model in `apps/api/app/models.py`.
+2. Add `apps/api/db/migrations/<next number>_<what it does>.sql` with the same change
+   written as an alteration, for example `ALTER TABLE users ADD COLUMN phone TEXT;`.
+3. Run the tests. `tests/test_schema.py` catches a model that no longer matches, and
+   `tests/test_migrations.py` builds a database each way and fails if the two disagree.
+4. Restart the API (`docker compose up`). Your database is migrated in place; no reset.
+
+Rules:
+
+- **A merged migration is never edited.** Other databases have already run it, so editing
+  it changes nothing for them. Correct a mistake with a new migration.
+- **Each migration is applied in its own transaction**, so one that fails leaves the
+  database as it was instead of half changed.
+- **`db/baseline.sql` is frozen.** It is `schema.sql` as it stood when migrations were
+  introduced, and it is where the migration chain starts. Never edit it.
+
+A database older than `baseline.sql` cannot be migrated; the API says so and prints the
+reset command.
