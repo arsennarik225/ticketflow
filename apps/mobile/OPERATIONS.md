@@ -185,26 +185,11 @@ confirmation must survive; both stale totals and stale matches must be labelled.
 and Refresh results/totals. Automated tests additionally exercise malformed responses and a
 record-level DELETE 404, without modifying backend code or deleting audit records.
 
-## Known backend release blocker from final QA
+## Backend concurrency fix
 
-Source review found an existing race in
-[`undo_check_in`](../api/app/routers/checkin.py): it loads the check-in and tests `reversed_at`
-before acquiring the ticket row lock, without refreshing that check-in afterward. This behavior
-also exists on the base branch; this mobile QA phase does not change backend code.
-
-The problematic interleaving is:
-
-1. Request A loads active check-in C1 and pauses before locking the ticket.
-2. Request B reverses C1 and commits.
-3. Another admission creates active check-in C2 for the same ticket and commits.
-4. A resumes with its stale C1 object, locks the ticket, and sets its status to `valid`, while
-   C2 remains active. Counts and QR verification can then contradict the active check-in.
-
-A controlled source-level simulation of the existing handler reproduced that inconsistent
-state. It was **not** a live PostgreSQL concurrency test. Release sign-off requires a separate
-backend fix and a database-backed regression for this interleaving. Mobile single-request guards
-cannot coordinate multiple devices. The mobile contract and normal reversal tests still pass;
-they do not establish server correctness for this concurrent case.
+The merged backend now locks the ticket before re-reading the check-in being reversed.
+Its PostgreSQL regression tests cover concurrent reversal/re-admission. Keep the mobile
+reconciliation checks below: losing a network response still leaves an uncertain outcome.
 
 ## Final iPhone acceptance gate
 

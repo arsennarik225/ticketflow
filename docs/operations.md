@@ -1,5 +1,9 @@
 # Operations: backups and a secure demo deployment
 
+For the runnable server configuration and first administrator setup, follow
+[deployment.md](deployment.md). Use `COMPOSE_FILE=compose.server.yml` before the commands
+below when operating that server stack.
+
 ## Backups (SRS §7)
 
 ```bash
@@ -24,16 +28,15 @@ installed. On Windows, run them from Git Bash or WSL. `backups/` is ignored by g
 
 1. **Secrets:** set long random `JWT_SECRET` and `QR_SECRET` in `.env` (never commit it).
    Changing `QR_SECRET` invalidates every issued ticket QR, so set it once.
-2. **Encryption in transit:** put HTTPS in front of the API and the web app, for example
-   Caddy with a two-line config (`api.example.kz { reverse_proxy localhost:8000 }`); it gets
-   certificates automatically. Set `API_URL`, `WEB_URL`, and `CORS_ORIGINS` to the HTTPS addresses.
+2. **Encryption in transit:** use `compose.server.yml`; its Caddy configuration serves both
+   the web app and API on one HTTPS domain and obtains certificates automatically.
 3. **Encryption at rest:** keep the database volume on an encrypted disk (most cloud VMs
    encrypt disks by default) or use a managed PostgreSQL with encryption turned on. Keep
    backup files on encrypted storage too.
-4. **Close what users don't need:** don't publish the database port (`DB_PORT`) or Mailpit;
-   use a real SMTP server via `SMTP_HOST` / `SMTP_PORT`.
+4. **Close what users don't need:** the server compose publishes only HTTP/HTTPS. Set real
+   SMTP credentials and STARTTLS/SSL options in `.env`; Mailpit is development-only.
 5. **No demo accounts:** set `SEED_DEMO_DATA=false` unless the server is only for the demo.
-6. **No live reload:** drop `--reload` and the code volume mounts from the `api` service.
+6. **No live reload:** the server uses the runtime API image without development mounts.
 
 ## What the backend already protects
 

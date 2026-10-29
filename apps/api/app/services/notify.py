@@ -6,6 +6,7 @@ emails land in Mailpit (http://localhost:8025); with SMTP_HOST empty they are lo
 """
 import logging
 import smtplib
+import ssl
 from dataclasses import dataclass
 from email.message import EmailMessage
 
@@ -71,7 +72,13 @@ def _deliver(to: str, subject: str, body: str, attachments: list[Attachment]) ->
         main, sub = a.mime_type.split("/")
         message.add_attachment(a.content, maintype=main, subtype=sub, filename=a.filename)
     try:
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=5) as smtp:
+        transport = smtplib.SMTP_SSL if settings.smtp_ssl else smtplib.SMTP
+        options = {"context": ssl.create_default_context()} if settings.smtp_ssl else {}
+        with transport(settings.smtp_host, settings.smtp_port, timeout=5, **options) as smtp:
+            if settings.smtp_starttls and not settings.smtp_ssl:
+                smtp.starttls(context=ssl.create_default_context())
+            if settings.smtp_username:
+                smtp.login(settings.smtp_username, settings.smtp_password)
             smtp.send_message(message)
     except OSError as error:  # a mail outage must not break ticketing
         log.warning("Could not send email to %s: %s", to, error)

@@ -6,7 +6,5 @@ cd "$(dirname "$0")/.."
 
 mkdir -p backups
 file="backups/biletflow-$(date +%Y%m%d-%H%M%S).dump"
-docker compose exec -T db pg_dump -U biletflow -d biletflow --format=custom --file=/tmp/backup.dump
-docker compose cp db:/tmp/backup.dump "$file"
-docker compose exec -T db rm /tmp/backup.dump
+docker compose exec -T db pg_dump -U biletflow -d biletflow --format=custom > "$file"
 echo "Saved $file"

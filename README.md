@@ -19,6 +19,7 @@ The first start creates the database and loads demo data. Then open:
 
 | What | Where |
 | --- | --- |
+| Web app — attendees, organizers, support, admin | http://localhost:3000 |
 | API | http://localhost:8000/v1 |
 | API docs — try every request here | http://localhost:8000/docs |
 | Emails the API sends (verification, tickets…) | http://localhost:8025 |
@@ -39,7 +40,6 @@ Payments are simulated. Use `tok_success`, `tok_declined`, or `tok_insufficient_
 docker compose run --rm api pytest   # run the backend tests
 docker compose logs -f api           # watch the API log
 docker compose down -v               # stop and wipe the database (demo data returns on next start)
-                                     # a schema change no longer needs this: see docs/database.md
 scripts/backup.sh                    # back up the database (restore: scripts/restore.sh <file>)
 ```
 
@@ -48,10 +48,11 @@ A port already in use? Copy `.env.example` to `.env` and change it there.
 ## Folders
 
 ```
-apps/api/     FastAPI backend — done, see apps/api/README.md
-apps/web/     Web app for attendees, organizers, admins — to build, see apps/web/README.md
-apps/mobile/  Ticket-scanner app for Event Admins — to build, see apps/mobile/README.md
+apps/api/     FastAPI backend, schema, and tests
+apps/web/     React web app for attendees, organizers, support, and admins
+apps/mobile/  Expo iOS/Android ticket scanner for Event Admins
 docs/         Requirements, API contract, database and architecture notes
+deploy/       HTTPS server configuration
 ```
 
 ## Stack
@@ -59,7 +60,14 @@ docs/         Requirements, API contract, database and architecture notes
 Python 3.12 + FastAPI + PostgreSQL 16, run with Docker Compose — reasons in
 [`docs/architecture.md`](docs/architecture.md). Data model: [`docs/database.md`](docs/database.md).
 Backups and a secure demo deployment: [`docs/operations.md`](docs/operations.md).
-Web and mobile are not started; SRS §9 recommends React (Next.js), React Native (Expo), TypeScript, Tailwind.
+Web: React + Vite + TypeScript + plain CSS. Scanner: React Native + Expo SDK 57 + TypeScript.
+No frontend state framework or UI component library. Next.js is unnecessary for this demo.
+
+**Phone setup and tests:** [`apps/mobile/README.md`](apps/mobile/README.md).
+**Browser walkthrough:** [`docs/HOW-TO-CHECK.md`](docs/HOW-TO-CHECK.md).
+**Checks performed and remaining release checks:** [`docs/validation.md`](docs/validation.md).
+**Deploy:** [`docs/deployment.md`](docs/deployment.md) — one Docker server, Caddy HTTPS,
+private PostgreSQL, and SMTP. The scanner can use Expo Go locally or an internal build.
 
 ## Rules nobody should break
 
@@ -72,7 +80,8 @@ From the SRS, not opinions. The backend enforces all of them; the apps must not 
 - Paper and phone ticket share **one identifier** — not two admissions. (§4.7)
 - A **Campaign QR is never admission**. The scanner rejects it. (§4.14)
 - Discounts are calculated **on the server**, never sent by the client. (§4.14)
-- Check-in is **online only**, and a ticket can't be used twice. (§4.8)
+- Check-in in the staff app is **online**, and a ticket can't be used twice.
+  The backend retains optional offline-sync endpoints for future clients. (§4.8)
 
 ## Decisions (defaults)
 
@@ -96,7 +105,7 @@ are always full.
 
 Everything the SRS requires for the MVP (§8), plus the bonus features: assigned seating with a
 predefined 160-seat hall (§4.3.1), calendar export with one-click Google/Outlook links (§4.11),
-offline scanning with later sync, and file attachments in support chat. GA4 analytics is optional
+backend offline-sync endpoints, and file attachments in support chat. The staff mobile app stays online-only, as required by the MVP. GA4 analytics is optional
 and belongs in the web app.
 
 ## Working agreement

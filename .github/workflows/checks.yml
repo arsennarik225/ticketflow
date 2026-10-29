@@ -1,0 +1,62 @@
+name: Checks
+on: [push, pull_request]
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: biletflow
+          POSTGRES_PASSWORD: biletflow
+          POSTGRES_DB: biletflow
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U biletflow" --health-interval 5s
+          --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r apps/api/requirements-dev.txt
+      - run: pytest -q
+        working-directory: apps/api
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - run: npm run api:types
+      - run: git diff --exit-code -- src/api-schema.d.ts
+      - run: npm test
+      - run: npm run build
+  mobile:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    env:
+      EXPO_NO_TELEMETRY: "1"
+      CI: "true"
+      EXPO_PUBLIC_API_URL: https://api.example.test/v1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run check:dependencies
+      - run: npm run export

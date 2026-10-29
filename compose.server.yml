@@ -1,0 +1,67 @@
+# Standalone server stack: docker compose -f compose.server.yml up -d --build
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: biletflow
+      POSTGRES_DB: biletflow
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env (hex characters)}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U biletflow -d biletflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: runtime
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://biletflow:${DB_PASSWORD}@db:5432/biletflow
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      QR_SECRET: ${QR_SECRET:?Set QR_SECRET in .env}
+      WEB_URL: https://${DOMAIN:?Set DOMAIN in .env}
+      API_URL: https://${DOMAIN}
+      CORS_ORIGINS: https://${DOMAIN}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
+      SMTP_HOST: ${SMTP_HOST:?Set SMTP_HOST in .env}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+      SMTP_SSL: ${SMTP_SSL:-false}
+      MAIL_FROM: ${MAIL_FROM:?Set MAIL_FROM in .env}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+volumes:
+  db-data:
+  caddy-data:
+  caddy-config:

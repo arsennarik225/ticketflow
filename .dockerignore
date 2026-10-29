@@ -3,3 +3,9 @@
 **/__pycache__
 **/.pytest_cache
 **/node_modules
+**/dist
+**/.expo
+**/.env
+**/.env.*
+**/coverage
+backups
