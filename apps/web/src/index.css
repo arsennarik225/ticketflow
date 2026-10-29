@@ -2,12 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/*
- * This file wasn't part of the uploaded project — reconstructed by scanning
- * every component for var(--xxx) usage. Values are reasonable guesses to get
- * the app rendering; swap in the real design-system values when you have
- * them (Figma, per README.md "Design: Figma").
- */
 :root {
   --bg: #faf9fc;
   --surface: #ffffff;
