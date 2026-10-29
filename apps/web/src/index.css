@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * This file wasn't part of the uploaded project — reconstructed by scanning
+ * every component for var(--xxx) usage. Values are reasonable guesses to get
+ * the app rendering; swap in the real design-system values when you have
+ * them (Figma, per README.md "Design: Figma").
+ */
+:root {
+  --bg: #faf9fc;
+  --surface: #ffffff;
+  --surface2: #f4f2fa;
+  --border: #e8e5f0;
+  --border2: #d9d4e8;
+
+  --text: #1c1830;
+  --text2: #534d6b;
+  --text3: #8a84a0;
+
+  --primary: #6c4de6;
+  --primary-light: #ede9fc;
+  --pink: #e8529a;
+  --pink-light: #fde8f3;
+  --sky: #3b9de8;
+  --sky-light: #deeefb;
+  --mint: #1b9c7e;
+  --mint-light: #d8f5ef;
+  --peach: #c85b28;
+
+  --success: #1bae6e;
+  --success-bg: #d4f7e9;
+  --danger: #e03e3e;
+  --danger-bg: #fde8e8;
+  --warning: #c47c00;
+  --warning-bg: #fef3d4;
+  --info: #3b9de8;
+  --info-bg: #deeefb;
+
+  --shadow-sm: 0 1px 2px rgba(28, 24, 48, 0.06);
+  --shadow: 0 4px 12px rgba(28, 24, 48, 0.08);
+  --shadow-lg: 0 12px 32px rgba(28, 24, 48, 0.12);
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15121f;
+    --surface: #1e1a2e;
+    --surface2: #27223a;
+    --border: #322c47;
+    --border2: #3d3656;
+
+    --text: #f2f0f9;
+    --text2: #c2bcd6;
+    --text3: #8a84a0;
+
+    --primary-light: #332a56;
+    --pink-light: #4a2338;
+    --sky-light: #1d3348;
+    --mint-light: #16342c;
+
+    --success-bg: #113829;
+    --danger-bg: #3a1c1c;
+    --warning-bg: #3a2e0f;
+    --info-bg: #1d3348;
+
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
