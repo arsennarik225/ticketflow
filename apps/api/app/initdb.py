@@ -26,6 +26,13 @@ Reset your local database (this deletes local data, demo data is loaded again):
     docker compose down -v && docker compose up --build
 """
 
+# Published pre-migration schema (709c5b4), before the baseline's comment header was added.
+# Accept its LF and CRLF fingerprints without changing the frozen baseline or existing rows.
+LEGACY_BASELINE_CHECKSUMS = {
+    "772ee1ef8ed6e8df5fe2521ac1ac3bbb940bbe1c64979dd7c65820293f35ba5b",
+    "31624ea409e75b568b36e3a3ac11de2f1b8cf923d6484810a33942c6573ac325",
+}
+
 
 def checksum(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -33,6 +40,12 @@ def checksum(path: Path) -> str:
 
 def schema_checksum() -> str:
     return checksum(settings.schema_path)
+
+
+def known_checksums(path: Path) -> set[str]:
+    raw = path.read_bytes()
+    lf = raw.replace(b"\r\n", b"\n")
+    return {hashlib.sha256(data).hexdigest() for data in (raw, lf, lf.replace(b"\n", b"\r\n"))}
 
 
 def record_checksum(connection) -> None:
@@ -55,9 +68,9 @@ def start_tracking(connection) -> None:
     * built from baseline.sql: mark none, so apply_pending() brings it up to date
     """
     stored = connection.scalar(text("SELECT checksum FROM schema_info"))
-    if stored == schema_checksum():
+    if stored in known_checksums(settings.schema_path):
         migrations.mark_all_applied(connection)
-    elif stored == checksum(settings.baseline_path):
+    elif stored in known_checksums(settings.baseline_path) | LEGACY_BASELINE_CHECKSUMS:
         migrations.create_table(connection)
     else:
         sys.exit(RESET_HINT)

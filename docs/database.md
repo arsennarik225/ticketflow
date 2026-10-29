@@ -169,3 +169,7 @@ Rules:
 
 A database older than `baseline.sql` cannot be migrated; the API says so and prints the
 reset command.
+
+The startup check recognizes the published pre-migration schema even though the frozen
+baseline added a comment header. LF/CRLF differences do not require resetting a database.
+Unknown older schemas still stop for manual review.
