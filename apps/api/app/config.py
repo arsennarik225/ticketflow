@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     cors_origins: str = "*"  # comma-separated list
     smtp_host: str = ""  # empty = print emails to the log instead of sending them
     smtp_port: int = 1025
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_starttls: bool = False
+    smtp_ssl: bool = False
     mail_from: str = "BiletFlow <no-reply@biletflow.kz>"
     seed_demo_data: bool = False
     pdf_font: str = ""  # a TTF with Cyrillic; common system fonts are tried when empty

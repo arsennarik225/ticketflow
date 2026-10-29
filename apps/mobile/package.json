@@ -14,7 +14,8 @@
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
     "doctor": "expo-doctor",
-    "check:dependencies": "expo install --check"
+    "check:dependencies": "expo install --check",
+    "export": "expo export --platform android --platform ios --max-workers 1"
   },
   "dependencies": {
     "expo": "~57.0.26",

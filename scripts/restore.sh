@@ -6,8 +6,6 @@ file="$(cd "$(dirname "${1:?usage: scripts/restore.sh <backup file>}")" && pwd)/
 cd "$(dirname "$0")/.."
 
 docker compose stop api
-docker compose cp "$file" db:/tmp/restore.dump
-docker compose exec -T db pg_restore -U biletflow -d biletflow --clean --if-exists --no-owner /tmp/restore.dump
-docker compose exec -T db rm /tmp/restore.dump
+docker compose exec -T db pg_restore -U biletflow -d biletflow --exit-on-error --single-transaction --clean --if-exists --no-owner < "$file"
 docker compose start api
 echo "Restored $file"

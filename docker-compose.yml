@@ -30,6 +30,7 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+      target: development
     depends_on:
       db:
         condition: service_healthy
@@ -60,6 +61,16 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-3000}:80"
 
 volumes:
   db-data:

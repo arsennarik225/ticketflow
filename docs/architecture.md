@@ -11,6 +11,21 @@ flowchart LR
 
 One backend, one database, no microservices (SRS §9). Web and mobile talk only to the API.
 
+## Web, scanner, and deployment
+
+`apps/web` is a React/Vite/TypeScript single-page app with plain CSS. Each feature has one
+screen module; shared forms, lists, requests, and translations stay in small utility files.
+The browser uses relative `/v1` URLs, proxied by Vite during editing and Caddy in Docker.
+
+`apps/mobile` retains the Expo SDK 57 staff app merged into main. Its screens, API calls,
+session handling, and scanning/search workflows are separate modules with Jest tests. It is
+online-only; tokens use SecureStore, while ticket results remain in memory. The web session
+lasts for the browser tab.
+
+The web uses generated OpenAPI types; mobile validates API responses through its existing
+typed decoders. Business logic stays in the backend.
+`compose.server.yml` provides the standalone HTTPS server stack; see [deployment](deployment.md).
+
 ## Backend layout
 
 | Folder / file | Job |
@@ -66,8 +81,9 @@ counting when the checkout expires, and a unique index stops a second valid tick
 
 ## Offline scanning (bonus)
 
-The scanner app downloads `/checkin/events/{id}/offline-list` before the doors open, checks codes
-against it without internet, and uploads its scans to `/offline-sync` later. The first check-in
+The backend supports `/checkin/events/{id}/offline-list` and `/offline-sync` for future
+clients. The current staff app deliberately remains online-only. A future offline client
+would download the list before the doors open and synchronize locally recorded scans later. The first check-in
 that reaches the server wins; later ones for the same ticket come back as `already_used`.
 
 ## Cross-cutting choices
@@ -91,5 +107,5 @@ that reaches the server wins; later ones for the same ticket come back as `alrea
 - **Data model:** tickets, orders, payments, and check-ins are relational and must stay
   consistent. PostgreSQL gives foreign keys, CHECK constraints, row locks for atomic holds,
   and partial unique indexes for "one active check-in per ticket".
-- **Deployment:** two containers (API and database) plus a mail catcher for development,
-  started with one `docker compose up`.
+- **Deployment:** API, database, and Caddy web containers; development adds a mail catcher.
+  Start them with `docker compose up --build`.

@@ -1,61 +1,72 @@
-# How to check this
+# How to test BiletFlow
 
-## 1. Start it (2 minutes)
-
-```bash
-docker compose up --build
-```
-
-Wait for `Application startup complete`. The first build downloads Python packages, so it is slower.
-
-## 2. Run the tests
+## Start and automated checks
 
 ```bash
-docker compose run --rm api pytest
+docker compose up -d --build
+docker compose exec api pytest -q
+cd apps/web
+npm ci
+npm test
+npm run build
+cd ../mobile
+# Use Node 24 for the staff app.
+npm ci
+npm run typecheck
+npm test
+npm run check:dependencies
+npm run export
 ```
 
-All tests should pass. They cover every rule in the README and validate every response against
-`docs/api/openapi.yaml`.
+Backend tests recreate **biletflow_test**, never the demo database. Do not point
+TEST_DATABASE_URL at data you need. Generated API types are refreshed from `apps/web`
+with `npm run api:types`. GitHub Actions runs the same checks.
 
-## 3. Try the core flow (SRS §13.4) in the browser
+Run `python3 scripts/smoke.py` from the repository root for the full HTTP walkthrough
+against the running local demo. It creates clearly named test events and retained simulated
+orders; do not use it on a deployment holding real user data.
 
-Open http://localhost:8000/docs, press **Authorize** after signing in (`POST /auth/login`, copy
-`accessToken`). Demo password for every account: `demo12345`.
+## Browser walkthrough
 
-1. As `organizer@biletflow.kz`: `GET /organizer/events` — four events in different states.
-2. Create a campaign for "Astana Jazz Night": `POST /organizer/events/{id}/campaigns`, then
-   `GET /organizer/campaigns/{id}/qr` shows the orange "NOT A TICKET" QR.
-3. Without signing in: `GET /events/{id}?campaignToken=…` shows the promo applied.
-4. As `attendee@biletflow.kz`: `POST /checkout/sessions`, then
-   `POST /checkout/sessions/{id}/confirm` with payment token `tok_success`.
-   The email with PDF tickets appears at http://localhost:8025.
-5. `POST /support/cases` with the ticket id — the organizer gets the case.
-6. As `staff@biletflow.kz`: `POST /checkin/events/{id}/verify` with the ticket's `qrPayload`
-   (valid), then with the campaign link (rejected). Check in twice: the second time is refused.
+Open http://localhost:3000 and http://localhost:8025 (test emails).
+Demo password: `demo12345`. Use separate browser profiles/windows to keep roles separate.
 
-Bonus features, same way:
+1. **Organizer** (`organizer@biletflow.kz`): create a future event, add a free ticket type,
+   preview, and publish. Edit venue/time and confirm the update notification.
+2. Add a paid ticket type. In **Activation**, complete the simulated verification, payout,
+   fee, and terms steps (default terms version `2026-09`). Paid sales should then work.
+3. In **Campaigns**, create a discount with a redemption limit. Download its distinctly
+   labelled Campaign QR, open its event link, and check that the promo is pre-applied.
+4. **Attendee** (`attendee@biletflow.kz`): buy a ticket. First choose a declined simulated
+   result: no ticket is issued. Retry successfully and verify discount/total/order.
+   Free checkout should show no payment selector. Check guest delivery separately.
+5. Download the PDF from **My orders**; print at 100% scale. Check name, event, date,
+   venue, ticket number, and readable QR. Add the event through a calendar link.
+6. Open **Support** from the order or ticket. Reply as organizer, change status, assign
+   using the organizer/staff user ID, attach a PNG/PDF, and escalate to platform support.
+7. As organizer, assign `staff@biletflow.kz` under **Staff**, including **Allow undo**.
+   Follow the [phone test guide](../apps/mobile/README.md); scan the printed PDF and
+   test duplicate entry, manual search, undo, and Campaign QR rejection.
+8. Review **Analytics**, date/ticket-type filters, attendees, orders, and history. Refund
+   a paid order and cancel a free registration; neither ticket should admit afterward.
+9. Duplicate a completed/cancelled event: configuration is copied, transactions are not.
+10. **Admin** (`admin@biletflow.kz`): search users/events/orders, inspect activation, review
+    reports/payments, suspend paid sales or an event, export CSV, and change settings.
+    Confirm sales stop and other users cannot open organizer/admin resources.
+11. Switch Kazakh/Russian/English and repeat the attendee flow at phone width. Names,
+    keyboard focus, status labels, and seat buttons must remain readable.
 
-7. Seating: `GET /events/{id}/seats` for "Almaty Philharmonic Gala" shows sold, blocked, and
-   free seats; buy one with `POST /checkout/sessions` and `seatIds`. The PDF prints the seat.
-8. Languages: the attendee's emails in http://localhost:8025 are in Kazakh, the organizer's in
-   Russian. `PATCH /me` with `{"language": "en"}` switches them.
-9. Calendar: every event has `calendarLinks`; `GET /events/{id}/calendar.ics` downloads the file.
-10. Offline scanning: `GET /checkin/events/{id}/offline-list`, then `POST .../offline-sync`.
-11. Support: `POST /support/cases/{id}/attachments` with a PNG, then `POST .../escalate`.
+Optional seating: configure the predefined venue **before orders exist**, select blocked
+seats, and create one priced ticket type for each seat category. Open the public map in
+two sessions: held/sold seats should update, and a conflicting checkout must fail.
 
-## 4. Look at the database
+## Old demo data and debugging
 
-Connect any SQL client to `localhost:5433`, user, password, and database `biletflow`.
-The diagram and table guide are in `docs/database.md`. Try `scripts/backup.sh` and
-`scripts/restore.sh` (see `docs/operations.md`).
+An existing database may contain only completed demo events. Preserve it: duplicate an
+old event, update the dates, publish, and assign staff again. To deliberately start over
+with disposable local data only, `docker compose down -v` deletes the database.
 
-## What to review
-
-- `docs/api/openapi.yaml` — the contract the web and mobile teams build on.
-- `apps/api/db/schema.sql` — the data model.
-- The defaults for the open questions in `README.md` → "Decisions".
-
-## What is deliberately missing
-
-GA4 analytics (optional, belongs in the web app) and real-time chat delivery (the chat polls).
-The web and mobile apps are not started; their folders hold short guides for the teams.
+Check browser Network requests and `docker compose logs -f api`. API errors have a stable
+code documented in `docs/api/error-codes.md`. Reproduce with http://localhost:8000/docs.
+Use [deployment instructions](deployment.md) for an HTTPS server; keep the physical-device
+checklist as a release gate even when all automated checks pass.

@@ -64,6 +64,8 @@ Environment variables (defaults work locally; see `.env.example` in the repo roo
 | `JWT_SECRET`, `QR_SECRET` | Sign access tokens and ticket QR codes — change for any shared deployment |
 | `WEB_URL`, `API_URL` | Used in email links, Campaign QR links, `pdfUrl`, `qrImageUrl` |
 | `SMTP_HOST`, `SMTP_PORT` | Mail server; empty host = print emails to the log |
+| `SMTP_USERNAME`, `SMTP_PASSWORD` | Optional SMTP authentication |
+| `SMTP_STARTTLS`, `SMTP_SSL` | Enable STARTTLS (587) or implicit TLS (465) for a server deployment |
 | `CORS_ORIGINS` | Allowed browser origins, comma-separated or `*` |
 | `SEED_DEMO_DATA` | `true` loads demo data into an empty database |
 
@@ -80,3 +82,5 @@ Nothing real happens with money or identity (SRS §3.2, §8):
 - Every payment and refund carries `simulated: true`.
 
 Backups and deploying a demo server securely: [`docs/operations.md`](../../docs/operations.md).
+Runnable HTTPS deployment: [`docs/deployment.md`](../../docs/deployment.md). Promote a verified
+account with `python -m app.admin email@example.kz` from the API environment.

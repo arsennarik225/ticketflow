@@ -1,0 +1,5 @@
+**/api-schema.d.ts
+**/node_modules
+**/dist
+**/.expo
+**/.venv
