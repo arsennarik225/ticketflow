@@ -75,6 +75,7 @@ export function TicketScanner({ eventId, onAdmitted, onAccessLost, onBack }: Pro
     {state.phase === 'admitted' && <>
       <Text accessibilityRole="header" accessibilityLiveRegion="polite" style={styles.result}>{admissionCopy.title}</Text>
       <Text style={textStyles.body}>{admissionCopy.detail}</Text>
+      <Text style={textStyles.body}>To scan another ticket or check this ticket again, tap Scan next ticket.</Text>
       <Text style={styles.identity}>{state.checkIn.attendeeName}</Text>
       <Text style={styles.detail}>Ticket: {state.checkIn.ticketNumber}</Text>
     </>}

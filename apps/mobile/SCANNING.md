@@ -7,10 +7,9 @@ organizer/attendee mobile functionality remain outside this app.
 
 ## Camera and architecture
 
-`expo-camera ~57.0.6` was added with `npx expo install expo-camera`, using Expo SDK 57's
+`expo-camera ~58.0.14` is installed with `npx expo install expo-camera`, using Expo SDK 58's
 supported version. It includes QR scanning in Expo Go on physical iOS/Android devices;
-there is no second scanner library. See the [SDK 57 camera documentation](https://docs.expo.dev/versions/v57.0.0/sdk/camera/).
-The package/lockfile changes add this dependency and its transitive dependencies only.
+there is no second scanner library. See the [SDK 58 camera documentation](https://docs.expo.dev/versions/v58.0.0/sdk/camera/).
 The config plugin enables barcode scanning and a camera-purpose description, disables the
 Android audio-recording permission, and omits the iOS microphone-purpose description.
 No microphone permission is requested. Plugin permission text applies to custom builds;
@@ -87,7 +86,7 @@ authenticated retry after token rotation; an ended session returns to sign-in.
    Preserve `.env`; set `EXPO_PUBLIC_API_URL=http://<UBUNTU-LAN-IP>:8000/v1`. Put the phone
    and Ubuntu on the same network. Open `http://<UBUNTU-LAN-IP>:8000/health` in iPhone Safari.
    Allow LAN traffic to API port 8000 and Metro port 8081.
-3. Update Expo Go for SDK 57 and enable its Local Network access in iPhone settings. Sign into
+3. Update Expo Go for SDK 58 and enable its Local Network access in iPhone settings. Sign into
    the same Expo account in Expo Go and CLI, as required by [Expo's iOS guidance](https://expo.dev/changelog/expo-go-57-login):
 
    ```sh
