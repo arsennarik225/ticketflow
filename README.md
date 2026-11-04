@@ -60,7 +60,7 @@ deploy/       HTTPS server configuration
 Python 3.12 + FastAPI + PostgreSQL 16, run with Docker Compose — reasons in
 [`docs/architecture.md`](docs/architecture.md). Data model: [`docs/database.md`](docs/database.md).
 Backups and a secure demo deployment: [`docs/operations.md`](docs/operations.md).
-Web: React + Vite + TypeScript + plain CSS. Scanner: React Native + Expo SDK 57 + TypeScript.
+Web: React + Vite + TypeScript + plain CSS. Scanner: React Native + Expo SDK 58 + TypeScript.
 No frontend state framework or UI component library. Next.js is unnecessary for this demo.
 
 **Phone setup and tests:** [`apps/mobile/README.md`](apps/mobile/README.md).

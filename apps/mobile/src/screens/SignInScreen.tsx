@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Keyboard, StyleSheet, Text, TextInput } from 'react-native';
+import { Keyboard, StyleSheet, Text, TextInput, TextInputInstance } from 'react-native';
 import { errorMessage } from '../api/errors';
 import { useAuth } from '../auth/AuthProvider';
 import { Button } from '../components/Button';
@@ -11,7 +11,7 @@ export function SignInScreen() {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
-  const passwordInput = useRef<TextInput>(null);
+  const passwordInput = useRef<TextInputInstance>(null);
   const submittingRef = useRef(false);
 
   async function submit() {

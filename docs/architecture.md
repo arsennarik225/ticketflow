@@ -17,7 +17,7 @@ One backend, one database, no microservices (SRS §9). Web and mobile talk only 
 screen module; shared forms, lists, requests, and translations stay in small utility files.
 The browser uses relative `/v1` URLs, proxied by Vite during editing and Caddy in Docker.
 
-`apps/mobile` retains the Expo SDK 57 staff app merged into main. Its screens, API calls,
+`apps/mobile` uses Expo SDK 58 for the staff app. Its screens, API calls,
 session handling, and scanning/search workflows are separate modules with Jest tests. It is
 online-only; tokens use SecureStore, while ticket results remain in memory. The web session
 lasts for the browser tab.

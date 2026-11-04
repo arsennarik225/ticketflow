@@ -1,6 +1,6 @@
 # BiletFlow Staff
 
-The existing React Native / Expo SDK 57 app is retained. It supports verified staff sign-in,
+The React Native / Expo SDK 58 app supports verified staff sign-in,
 assigned events, attendance totals, camera verification, deliberate admission, manual search,
 and authorized undo. The MVP is **online-only**; backend offline endpoints are reserved for
 future clients. Tokens use SecureStore; ticket results stay in memory.
@@ -13,18 +13,23 @@ future clients. Tokens use SecureStore; ticket results stay in memory.
 3. Use **Node 24**. In `apps/mobile`:
 
    ```bash
-   cp .env.example .env
+   cp -n .env.example .env
    # Set EXPO_PUBLIC_API_URL=http://192.168.1.20:8000/v1 in .env
    npm ci
-   npm start
+   npx expo login
+   npm start -- --go --lan
    ```
 
-4. Open the terminal's project QR in an **Expo Go build matching SDK 57**. A version
+4. Open the terminal's project QR in an **Expo Go build matching SDK 58**. On iPhone,
+   sign into Expo Go with the same Expo account used by `npx expo login`. A version
    mismatch requires a matching Expo Go/development build; see [SETUP.md](SETUP.md).
 5. Sign in as `staff@biletflow.kz` / `demo12345`, select an assigned event, allow camera
    access, scan a ticket PDF on another screen or on paper, and press **Check in**.
 
 A real phone cannot use the computer's `localhost`. An Expo tunnel does not tunnel the API.
+Expo reads `.env`, not `.env.example`. After changing the API URL, stop Metro and restart
+with `npm start -- --go --lan --clear` so the new value is bundled. Keep your machine's
+address in the ignored `.env`; the shared example intentionally has no default address.
 For new staff, register and verify in the web app, then assign that exact email under the
 organizer's **Staff** tab. If demo dates are old, duplicate an event, update dates, publish,
 and assign staff again. To test campaign/email links on the phone, also set root WEB_URL
@@ -33,7 +38,9 @@ and API_URL to LAN URLs and recreate the API with `docker compose up -d api`.
 ## Acceptance checklist
 
 - Valid verification shows the attendee and seat; it does not admit anyone by itself.
-- Check in once; rescan the same digital/paper ticket and expect **already used**.
+- Check in once, tap **Scan next ticket**, then rescan the same digital/paper ticket.
+  Expect **Already checked in**, no Check in action, and unchanged attendance totals.
+  The scanner pauses on each result until you tap **Scan next ticket**.
 - Reject campaign, forged, wrong-event, refunded, and cancelled tickets.
 - Search by name/email/ticket number; manually admit a valid attendee.
 - Undo a recent admission; test staff with and without reversal permission.

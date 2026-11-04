@@ -136,6 +136,28 @@ test.each([false, true])('confirmed admission refetches totals and survives tota
   expect(screen.queryByText('Sensitive network detail')).toBeNull();
 });
 
+test('rescanning an admitted ticket after Scan next ticket shows Already checked in without another admission', async () => {
+  const h = scenario();
+  const screen = await openScanner(h);
+  await scan(screen);
+  await screen.findByText('Valid ticket');
+  h.totals.mockReturnValueOnce(response({ data: [], registered: 10, checkedIn: 3 }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Check in' }));
+  await screen.findByText('Check-in confirmed');
+  await screen.findByText('30% checked in');
+
+  h.verify.mockReturnValueOnce(response(verificationBody('already_used')));
+  await fireEvent.press(screen.getByRole('button', { name: 'Scan next ticket' }));
+  await scan(screen);
+  await screen.findByText('Already checked in');
+
+  expect(screen.queryByRole('button', { name: 'Check in' })).toBeNull();
+  expect(screen.getByText('30% checked in')).toBeTruthy();
+  expect(h.verify).toHaveBeenCalledTimes(2);
+  expect(h.admit).toHaveBeenCalledTimes(1);
+  expect(h.totals).toHaveBeenCalledTimes(2);
+});
+
 test('a structured 409 refusal replaces valid verification without claiming success', async () => {
   const h = scenario();
   const screen = await openScanner(h);
@@ -290,9 +312,11 @@ test.each(['verify', 'admit'] as const)('%s access loss returns through the Phas
 test('transient inactivity preserves the camera workflow, but real backgrounding revalidates auth and clears selection', async () => {
   const handlers = new Set<(state: ReactNative.AppStateStatus) => void>();
   const originalAddListener = ReactNative.AppState.addEventListener;
-  ReactNative.AppState.addEventListener = jest.fn((_event, listener) => {
-    handlers.add(listener);
-    return { remove: () => { handlers.delete(listener); } };
+  ReactNative.AppState.addEventListener = jest.fn((event, listener) => {
+    if (event !== 'change') return originalAddListener(event, listener);
+    const onChange = listener as (state: ReactNative.AppStateStatus) => void;
+    handlers.add(onChange);
+    return { remove: () => { handlers.delete(onChange); } };
   });
   const original = ReactNative.AppState.currentState;
   ReactNative.AppState.currentState = 'active';

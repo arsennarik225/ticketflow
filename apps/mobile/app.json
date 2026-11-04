@@ -15,7 +15,8 @@
         "microphonePermission": false,
         "recordAudioAndroid": false,
         "barcodeScannerEnabled": true
-      }]
+      }],
+      "expo-status-bar"
     ]
   }
 }

@@ -7,7 +7,7 @@ See [OPERATIONS.md](OPERATIONS.md) for the Phase 4 architecture and device accep
 See [SCANNING.md](SCANNING.md) for the Phase 3 device procedure and operational behavior.
 The [README](README.md) summarizes the implemented scope and links these guides.
 
-## Local setup (Ubuntu + iPhone / Expo Go)
+## Local setup (macOS or Ubuntu + iPhone / Expo Go)
 
 1. Start the existing development backend from the repository root, if it is not already running:
 
@@ -15,7 +15,7 @@ The [README](README.md) summarizes the implemented scope and links these guides.
    docker compose up --build
    ```
 
-   Wait for API startup and open `http://localhost:8000/docs` on Ubuntu. Compose seeds demo
+   Wait for API startup and open `http://localhost:8000/docs` on the computer. Compose seeds demo
    accounts only when the database has no users; it does not reset an existing database.
    For a backend without Docker, follow [the API setup](../api/README.md) and bind Uvicorn
    to `0.0.0.0` so the phone can reach it.
@@ -31,20 +31,23 @@ The [README](README.md) summarizes the implemented scope and links these guides.
    `.env.example` to `.env`; preserve an existing local configuration.
    Set `EXPO_PUBLIC_API_URL` to your reachable backend URL **including `/v1`**, for example
    `http://192.168.1.20:8000/v1`, replacing that sample address with Ubuntu's Wi-Fi/LAN IPv4
-   address from Settings → Network or `hostname -I`. The phone cannot use Ubuntu's `localhost`.
+   address from Settings → Network or `hostname -I`. On macOS, use System Settings → Wi-Fi
+   → Details → IP address. The phone cannot use the computer's `localhost`.
    Use the actual published API port if it differs from 8000. Release builds require HTTPS.
    The public URL is configuration, not a secret; never put passwords or tokens in environment variables.
+   Editing `.env.example` alone does not configure Expo: the URL must be in `apps/mobile/.env`.
 
-3. Connect Ubuntu and the iPhone to the same network. In iPhone Safari, open
-   `http://<UBUNTU-LAN-IP>:8000/health`; it must respond before testing the app.
-   Permit local access to the API port and Metro (usually 8081) in Ubuntu's firewall.
+3. Connect the computer and iPhone to the same network. In iPhone Safari, open
+   `http://<COMPUTER-LAN-IP>:8000/health`; it must respond before testing the app.
+   Permit local access to the API port and Metro (usually 8081) in the computer's firewall.
    Enable Expo Go under iPhone Settings → Privacy & Security → Local Network.
 
-4. Install/update Expo Go for SDK 57 on the iPhone using [Expo's download selector](https://expo.dev/go).
-   Expo's [September 3, 2026 announcement](https://expo.dev/changelog/expo-go-57-login)
-   confirms SDK 57 support in the App Store and requires the **same Expo account** in Expo CLI
-   and Expo Go on a physical iPhone. This is separate from the BiletFlow staff account.
-   Sign into Expo Go using its account icon, then on Ubuntu run:
+4. Install Expo Go matching **SDK 58** using [Expo's download selector](https://expo.dev/go).
+   Expo Go and the project must use the same SDK. The App Store provides the current Expo Go;
+   for a future SDK mismatch, follow the [upgrade guide](https://docs.expo.dev/workflow/upgrading-expo-sdk-walkthrough/)
+   or use a development build. Sign into the **same Expo account** in Expo CLI and Expo Go
+   on a physical iPhone. This is separate from the BiletFlow staff account.
+   Sign into Expo Go using its account icon, then on the computer run:
 
    ```sh
    npx expo login
@@ -193,9 +196,10 @@ Bundle export does not replace native-device testing or produce a signed store b
 Tests use controlled fetch/native-storage substitutes only in test files. Production requests
 always go to the configured backend. There is no offline mode, fake event data, or demo login.
 
-The test renderers are pinned to match Expo's React 19.2.3: `react-test-renderer` 19.2.3
-for Jest Expo and `test-renderer` 1.2.0 for React Native Testing Library. The latter's newer
-1.3.0 release pulls a reconciler requiring React 19.3, so do not update it independently.
+The test renderers are pinned for SDK 58's React 19.3.0: `react-test-renderer` 19.3.0
+for Jest Expo and `test-renderer` 1.3.1 for React Native Testing Library. Update React,
+the renderers, and their reconciler together when upgrading Expo; SDK 57's renderer pins
+do not support the new React version.
 At Phase 1 validation, npm audit reported 58 transitive dependency advisories
 (12 moderate, 46 high). Its suggested fixes change major Expo/React Native/Jest versions;
 no forced audit upgrade was applied. Reassess these with compatible upstream updates.

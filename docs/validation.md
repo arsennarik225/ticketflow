@@ -1,5 +1,19 @@
 # Validation — 29 October 2026
 
+## Mobile update — 4 November 2026
+
+The staff app now uses Expo SDK 58, React Native 0.88.1, and React 19.3.0 to match
+SDK 58 Expo Go on physical phones. React testing dependencies and strict native ref
+types were updated together. Phone setup now explains Expo account sign-in, `.env`
+configuration, restarting Metro, and rearming the scanner with **Scan next ticket**.
+
+Validated on Node 24 with a clean `npm ci`: **317 Jest tests**, TypeScript, Expo's online
+dependency compatibility check, **20/20 Expo Doctor checks**, and Android/iOS bundle exports.
+The added scanner regression covers admission followed by rescanning the same ticket:
+**Already checked in** appears without another admission or attendance increase.
+These automated checks do not replace the physical-device acceptance checklist below.
+The October results below describe the preceding integrated baseline.
+
 ## Integration and scope
 
 The review branch starts from `696e87b` on main, including the merged staff app, database
