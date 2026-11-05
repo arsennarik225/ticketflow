@@ -5,6 +5,20 @@ export const LanguageContext = createContext<Language>('ru');
 const rows = [
   ['Events', 'События', 'Іс-шаралар'],
   ['My orders', 'Мои заказы', 'Тапсырыстарым'],
+  ['My tickets', 'Мои билеты', 'Билеттерім'],
+  ['Show QR', 'Показать QR', 'QR көрсету'],
+  ['Ticket QR code', 'QR-код билета', 'Билеттің QR коды'],
+  [
+    'Show this QR code at the entrance. Increase your screen brightness.',
+    'Покажите этот QR-код на входе. Увеличьте яркость экрана.',
+    'Кіреберісте осы QR кодын көрсетіңіз. Экран жарықтығын арттырыңыз.',
+  ],
+  ['This ticket has already been used.', 'Этот билет уже использован.', 'Бұл билет қолданылған.'],
+  [
+    'This ticket cannot be used for entry.',
+    'Этот билет недействителен для входа.',
+    'Бұл билетпен кіруге болмайды.',
+  ],
   ['Organizer', 'Организатор', 'Ұйымдастырушы'],
   ['Support', 'Поддержка', 'Қолдау'],
   ['Admin', 'Администратор', 'Әкімші'],
