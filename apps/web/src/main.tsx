@@ -3,7 +3,15 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, NavLink, Route, Routes } from 'react-router-dom';
 import { api, saveSession, session, type User } from './api';
 import { AccountPage, AuthContext, AuthPage, RequireAuth } from './auth';
-import { CheckoutPage, EventPage, EventsPage, OrderPage, OrdersPage, TicketPage } from './events';
+import {
+  CheckoutPage,
+  EventPage,
+  EventsPage,
+  OrderPage,
+  OrdersPage,
+  TicketPage,
+  TicketsPage,
+} from './events';
 import { ManageEventPage, NewEventPage, OrganizerPage } from './organizer';
 import { CasePage, NewCasePage, SupportPage } from './support';
 import { AdminPage } from './admin';
@@ -68,6 +76,7 @@ function Shell({
             <NavLink to="/">{t('Events')}</NavLink>
             {user && (
               <>
+                <NavLink to="/tickets">{t('My tickets')}</NavLink>
                 <NavLink to="/orders">{t('My orders')}</NavLink>
                 <NavLink to="/organizer">{t('Organizer')}</NavLink>
                 <NavLink to="/support">{t('Support')}</NavLink>
@@ -134,6 +143,14 @@ function Shell({
             }
           />
           <Route path="/orders/:id" element={<OrderPage />} />
+          <Route
+            path="/tickets"
+            element={
+              <RequireAuth>
+                <TicketsPage />
+              </RequireAuth>
+            }
+          />
           <Route
             path="/tickets/:id"
             element={

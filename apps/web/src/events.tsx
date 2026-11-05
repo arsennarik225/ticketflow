@@ -15,6 +15,7 @@ import {
 } from './api';
 import { date, LanguageContext, money, useT } from './i18n';
 import { useUser } from './auth';
+import { TicketQr } from './TicketQr';
 import {
   Action,
   ErrorNotice,
@@ -572,11 +573,12 @@ export function CheckoutPage() {
     </>
   );
 }
-export function TicketCard({ ticket }: { ticket: Ticket }) {
+export function TicketCard({ ticket, showQr = false }: { ticket: Ticket; showQr?: boolean }) {
   const t = useT();
   const user = useUser();
   return (
-    <article className="card">
+    <article className="card ticket-card">
+      {ticket.eventTitle && <h2>{ticket.eventTitle}</h2>}
       <h3>
         {ticket.ticketTypeName} · {ticket.attendee?.fullName}
       </h3>
@@ -589,7 +591,24 @@ export function TicketCard({ ticket }: { ticket: Ticket }) {
           {ticket.seat.accessible && ' ♿'}
         </p>
       )}
+      {showQr && ticket.eventStartsAt && <p>{date(ticket.eventStartsAt)}</p>}
+      {showQr && ticket.venueName && <p>{ticket.venueName}</p>}
+      {showQr && ticket.status === 'valid' && <TicketQr payload={ticket.qrPayload} />}
+      {showQr && ticket.status !== 'valid' && (
+        <p className="notice">
+          {t(
+            ticket.status === 'checked_in'
+              ? 'This ticket has already been used.'
+              : 'This ticket cannot be used for entry.',
+          )}
+        </p>
+      )}
       <div className="actions">
+        {!showQr && ticket.status === 'valid' && user && (
+          <Link className="button primary" to={`/tickets/${ticket.id}`}>
+            {t('Show QR')}
+          </Link>
+        )}
         {!['cancelled', 'refunded'].includes(ticket.status) &&
           (user ? (
             <Action
@@ -606,6 +625,33 @@ export function TicketCard({ ticket }: { ticket: Ticket }) {
       </div>
       <small>{t('Print the downloaded PDF at 100% scale.')}</small>
     </article>
+  );
+}
+export function TicketsPage() {
+  const t = useT();
+  const [page, setPage] = useState(1);
+  const resource = useResource<Page<Order>>(`/me/orders?page=${page}`);
+  return (
+    <>
+      <h1>{t('My tickets')}</h1>
+      <Resource value={resource}>
+        {(data) => (
+          <>
+            <div className="grid">
+              {data.data
+                .flatMap((order) => order.tickets || [])
+                .map((ticket) => (
+                  <TicketCard key={ticket.id} ticket={ticket} />
+                ))}
+            </div>
+            {!data.data.some((order) => order.tickets?.length) && (
+              <p className="empty">{t('No results')}</p>
+            )}
+            <Pager page={page} total={data.total} onChange={setPage} />
+          </>
+        )}
+      </Resource>
+    </>
   );
 }
 export function OrdersPage() {
@@ -682,6 +728,16 @@ export function OrderPage() {
 }
 export function TicketPage() {
   const { id } = useParams();
+  const t = useT();
   const resource = useResource<Ticket>(`/me/tickets/${id}`);
-  return <Resource value={resource}>{(ticket) => <TicketCard ticket={ticket} />}</Resource>;
+  return (
+    <>
+      <Link className="back" to="/tickets">
+        ← {t('My tickets')}
+      </Link>
+      <div className="ticket-page">
+        <Resource value={resource}>{(ticket) => <TicketCard ticket={ticket} showQr />}</Resource>
+      </div>
+    </>
+  );
 }

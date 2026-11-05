@@ -414,6 +414,28 @@ td {
 .ticket-count {
   width: 85px;
 }
+.ticket-page {
+  max-width: 560px;
+  margin: auto;
+}
+.ticket-card {
+  overflow-wrap: anywhere;
+}
+.ticket-qr {
+  margin: 1.5rem 0;
+  text-align: center;
+}
+.ticket-qr svg {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+  margin: auto;
+}
+.ticket-qr figcaption {
+  margin-top: 0.75rem;
+  color: #52665e;
+}
 .action {
   display: inline-block;
 }
