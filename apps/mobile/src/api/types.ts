@@ -6,6 +6,7 @@ export interface User {
   emailVerified: boolean;
   fullName?: string;
   roles: string[];
+  language?: 'kk' | 'ru' | 'en';
 }
 
 export interface Tokens {
@@ -28,6 +29,7 @@ export function parseUser(value: unknown): User {
   return {
     id: value.id, email: value.email, emailVerified: value.emailVerified,
     roles: value.roles, ...(value.fullName === undefined ? {} : { fullName: value.fullName }),
+    ...(['kk', 'ru', 'en'].includes(String(value.language)) ? { language: value.language as User['language'] } : {}),
   };
 }
 
