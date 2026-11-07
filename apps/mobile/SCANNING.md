@@ -100,7 +100,7 @@ authenticated retry after token rotation; an ended session returns to sign-in.
 4. Prepare current, published events assigned to the staff account using the fixture steps in
    [SETUP.md](SETUP.md). In a seeded local database the staff login is `staff@biletflow.kz` /
    `demo12345`; these are documented development credentials. Keep two assigned events for
-   switching tests. Sign into the mobile app as staff and choose the correct event.
+   switching tests. Sign into the mobile app as staff, open **Menu → Check in**, and choose the correct event.
 5. Obtain real test ticket QRs on Ubuntu. In Swagger, log in as the seeded attendee
    (`attendee@biletflow.kz` / `demo12345`), Authorize with its access token, and use
    `GET /v1/me/orders`. Choose a `valid` ticket whose `eventId` matches the selected event.

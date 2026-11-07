@@ -50,7 +50,7 @@ A port already in use? Copy `.env.example` to `.env` and change it there.
 ```
 apps/api/     FastAPI backend, schema, and tests
 apps/web/     React web app for attendees, organizers, support, and admins
-apps/mobile/  Expo iOS/Android ticket scanner for Event Admins
+apps/mobile/  Native Expo iOS/Android app for all roles, including the Event Admin scanner
 docs/         Requirements, API contract, database and architecture notes
 deploy/       HTTPS server configuration
 ```
@@ -67,7 +67,7 @@ No frontend state framework or UI component library. Next.js is unnecessary for 
 **Browser walkthrough:** [`docs/HOW-TO-CHECK.md`](docs/HOW-TO-CHECK.md).
 **Checks performed and remaining release checks:** [`docs/validation.md`](docs/validation.md).
 **Deploy:** [`docs/deployment.md`](docs/deployment.md) — one Docker server, Caddy HTTPS,
-private PostgreSQL, and SMTP. The scanner can use Expo Go locally or an internal build.
+private PostgreSQL, and SMTP. The mobile app can use Expo Go locally or an internal build.
 
 ## Rules nobody should break
 
@@ -105,7 +105,9 @@ are always full.
 
 Everything the SRS requires for the MVP (§8), plus the bonus features: assigned seating with a
 predefined 160-seat hall (§4.3.1), calendar export with one-click Google/Outlook links (§4.11),
-backend offline-sync endpoints, and file attachments in support chat. The staff mobile app stays online-only, as required by the MVP. GA4 analytics is optional
+backend offline-sync endpoints, and file attachments in support chat. The mobile app includes
+native screens for all website workflows plus staff scanning, search, and undo; see the
+[feature map](docs/mobile-parity.md). Mobile stays online-only, as required by the MVP. GA4 analytics is optional
 and belongs in the web app.
 
 ## Working agreement

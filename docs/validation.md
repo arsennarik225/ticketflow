@@ -1,5 +1,24 @@
 # Validation — 29 October 2026
 
+## Native mobile parity — 7 November 2026
+
+Added separate native screens for attendee, organizer, support and platform-admin web
+workflows, retaining the existing scanner/search/undo area and its assignment-based access.
+The [feature map and device walkthrough](mobile-parity.md) record the expanded requirement.
+
+Validated on Node 24: **338 Jest tests across 15 suites**, TypeScript, Expo's online
+dependency compatibility check, and Android/iOS bundle exports. The new regressions cover
+guest checkout, role navigation, organizer editing and tiyin prices, support defaults and
+document uploads, admin settings, file sharing/cleanup, token rotation, account changes,
+accepting an iPhone date-picker default, and preserving a draft through successful foreground
+session validation.
+
+No backend, database or OpenAPI contract changes were required. The backend/web suites
+were not rerun for this mobile-only change. The new native UI has not yet had the full
+physical iPhone/Android walkthrough; visual layout, camera, picker/share-sheet behavior,
+and real-device connectivity remain manual acceptance checks. Build exports are not
+installable APK/IPA files. No services were left running for these checks.
+
 ## Mobile update — 4 November 2026
 
 The staff app now uses Expo SDK 58, React Native 0.88.1, and React 19.3.0 to match

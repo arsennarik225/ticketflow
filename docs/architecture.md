@@ -3,7 +3,7 @@
 ```mermaid
 flowchart LR
     web["Web app<br/>attendees, organizers, admins"] -->|"HTTPS + JSON /v1"| api
-    mobile["Scanner app<br/>Event Admins"] -->|"HTTPS + JSON /v1/checkin"| api
+    mobile["Native mobile app<br/>attendees, organizers, admins, staff"] -->|"HTTPS + JSON /v1"| api
     api["FastAPI backend<br/>apps/api"] --> db[("PostgreSQL")]
     api -->|"SMTP"| mail["Email<br/>Mailpit locally"]
     contract[["docs/api/openapi.yaml"]] -.->|"served at /docs,<br/>checked by tests"| api
@@ -11,19 +11,29 @@ flowchart LR
 
 One backend, one database, no microservices (SRS §9). Web and mobile talk only to the API.
 
-## Web, scanner, and deployment
+## Web, native mobile, and deployment
 
 `apps/web` is a React/Vite/TypeScript single-page app with plain CSS. Each feature has one
 screen module; shared forms, lists, requests, and translations stay in small utility files.
 The browser uses relative `/v1` URLs, proxied by Vite during editing and Caddy in Docker.
 
-`apps/mobile` uses Expo SDK 58 for the staff app. Its screens, API calls,
-session handling, and scanning/search workflows are separate modules with Jest tests. It is
-online-only; tokens use SecureStore, while ticket results remain in memory. The web session
-lasts for the browser tab.
+`apps/mobile` uses Expo SDK 58. `src/platform` contains separate native screens for the web
+workflows, native form controls, navigation, translations, ticket QR display, and file sharing.
+It does not embed the website. `ScannerNavigator` retains the assigned-event/scanning/search
+workflow and its stricter staff gate. Both areas use one `AuthSession` and coordinated token
+rotation. Its `authorized`/`denied` states describe scanner eligibility; both can represent a
+signed-in user of the rest of the app. Account changes clear the old user's screens and
+transient checkout data. Foreground validation keeps native form drafts mounted but disables
+interaction until validation finishes; scanner operations still reset for revalidation.
 
-The web uses generated OpenAPI types; mobile validates API responses through its existing
-typed decoders. Business logic stays in the backend.
+The app is online-only; tokens and language preference use SecureStore, while guest receipts,
+checkout retry keys, and scanner results remain in memory. Downloaded files are shared through
+the native sheet and the temporary copy is deleted afterward. The web session lasts for the
+browser tab.
+
+Both apps use the generated OpenAPI declarations in `apps/web/src/api-schema.d.ts` (mobile
+imports types only). Scanner/auth responses also retain their runtime decoders. Business
+rules, role checks, amounts in tiyin, and simulated payment outcomes stay in the backend.
 `compose.server.yml` provides the standalone HTTPS server stack; see [deployment](deployment.md).
 
 ## Backend layout

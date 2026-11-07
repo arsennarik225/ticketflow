@@ -2,7 +2,7 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import * as ReactNative from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from '../auth/AuthProvider';
-import { RootNavigator } from '../navigation/RootNavigator';
+import { ScannerNavigator } from '../navigation/ScannerNavigator';
 import { deferred, harness, response, tokenResponse, user } from './helpers';
 
 jest.mock('react-native-safe-area-context', () => require('react-native-safe-area-context/jest/mock').default);
@@ -14,7 +14,7 @@ for (const name of ['ActivityIndicator', 'KeyboardAvoidingView', 'Pressable', 'S
 }
 
 function show(h: ReturnType<typeof harness>) {
-  return render(<SafeAreaProvider><AuthProvider session={h.session}><RootNavigator /></AuthProvider></SafeAreaProvider>);
+  return render(<SafeAreaProvider><AuthProvider session={h.session}><ScannerNavigator /></AuthProvider></SafeAreaProvider>);
 }
 
 test('sign-in submits once, shows progress, and logout removes the protected screen', async () => {
