@@ -1,5 +1,13 @@
 import { ElementRef, useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/AuthProvider';
 import { ScannerNavigator } from '../navigation/ScannerNavigator';
@@ -19,10 +27,16 @@ import { ManageEventPage, NewEventPage, OrganizerPage } from './organizer';
 import { CasePage, NewCasePage, SupportPage } from './support';
 import { bindSession, session as accountSession, type User } from './api';
 import { Language, LanguageContext, useT } from './i18n';
-import { Choice, NativeButton, Option, Paragraph } from './native';
+import { NativeButton, Paragraph } from './native';
 import { eventPath, NavigationProvider, useNavigation } from './navigation';
 import { Form, text } from './ui';
 import { flowStorage, loadLanguage, preferences, saveLanguage } from './storage';
+
+const languages: { value: Language; label: string }[] = [
+  { value: 'kk', label: 'Қазақша' },
+  { value: 'ru', label: 'Русский' },
+  { value: 'en', label: 'English' },
+];
 
 export function Application() {
   const { session } = useAuth();
@@ -68,6 +82,7 @@ function Shell({
   const t = useT();
   const pathname = navigation.path.split('?')[0] || '/';
   const [menu, setMenu] = useState(false);
+  const [languageOpen, setLanguageOpen] = useState(false);
   const scroll = useRef<ElementRef<typeof ScrollView>>(null);
   const previousUser = useRef<string | null>(null);
   useEffect(() => {
@@ -86,6 +101,7 @@ function Shell({
   useEffect(() => {
     scroll.current?.scrollTo({ y: 0, animated: false });
     setMenu(false);
+    setLanguageOpen(false);
   }, [pathname]);
   if (
     (state.status === 'restoring' && !user) ||
@@ -121,20 +137,71 @@ function Shell({
       >
         <View style={{ padding: 12, gap: 8 }}>
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-            <Text style={{ flex: 1, fontWeight: '800', fontSize: 24, color: colors.text }}>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+              style={{ flex: 1, fontWeight: '800', fontSize: 24, color: colors.text }}
+            >
               BiletFlow
             </Text>
-            {navigation.canGoBack && (
-              <NativeButton onPress={navigation.back}>{t('Back')}</NativeButton>
-            )}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('Language')}
+              accessibilityValue={{
+                text: languages.find((item) => item.value === language)?.label,
+              }}
+              accessibilityState={{ expanded: languageOpen }}
+              onPress={() => {
+                setMenu(false);
+                setLanguageOpen((value) => !value);
+              }}
+              style={({ pressed }) => [styles.languageButton, pressed && styles.pressed]}
+            >
+              <Text style={styles.languageCode}>
+                {language === 'kk' ? 'KZ' : language.toUpperCase()}
+              </Text>
+              <Text style={styles.chevron}>{languageOpen ? '▴' : '▾'}</Text>
+            </Pressable>
             <NativeButton
               aria-label={t('Menu')}
-              onPress={() => setMenu((value) => !value)}
+              onPress={() => {
+                setLanguageOpen(false);
+                setMenu((value) => !value);
+              }}
               aria-pressed={menu}
             >
               ☰
             </NativeButton>
           </View>
+          {languageOpen && (
+            <View
+              accessibilityRole="radiogroup"
+              accessibilityLabel={t('Language')}
+              style={styles.languagePanel}
+            >
+              {languages.map((item) => (
+                <Pressable
+                  key={item.value}
+                  accessibilityRole="radio"
+                  accessibilityLabel={item.label}
+                  accessibilityState={{ checked: language === item.value }}
+                  onPress={() => {
+                    onLanguage(item.value);
+                    setLanguageOpen(false);
+                  }}
+                  style={({ pressed }) => [
+                    styles.languageOption,
+                    language === item.value && styles.selectedLanguage,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={styles.languageName}>{item.label}</Text>
+                  <Text style={styles.checkmark}>{language === item.value ? '✓' : ''}</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
           {menu && (
             <ScrollView style={{ maxHeight: 360 }}>
               <View style={{ gap: 8 }}>
@@ -150,15 +217,6 @@ function Shell({
                     {t(label)}
                   </NativeButton>
                 ))}
-                <Choice
-                  aria-label={t('Language')}
-                  value={language}
-                  onChange={(event) => onLanguage(event.target.value)}
-                >
-                  <Option value="kk">Қазақша</Option>
-                  <Option value="ru">Русский</Option>
-                  <Option value="en">English</Option>
-                </Choice>
                 {user && (
                   <NativeButton
                     onPress={() => {
@@ -193,6 +251,49 @@ function Shell({
     </AuthContext.Provider>
   );
 }
+
+const styles = StyleSheet.create({
+  languageButton: {
+    minHeight: 44,
+    minWidth: 68,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+    borderWidth: 1,
+    borderRadius: 8,
+  },
+  languageCode: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  chevron: { color: '#FFFFFF', fontSize: 24, lineHeight: 28 },
+  languagePanel: {
+    alignSelf: 'flex-end',
+    width: 200,
+    maxWidth: '100%',
+    padding: 6,
+    gap: 2,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 12,
+  },
+  languageOption: {
+    minHeight: 44,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  languageName: { flexShrink: 1, color: colors.text, fontSize: 16 },
+  checkmark: { width: 20, color: colors.primary, fontSize: 16, fontWeight: '700' },
+  selectedLanguage: { backgroundColor: '#E8EEFF' },
+  pressed: { opacity: 0.65 },
+});
 
 function Routes({ pathname }: { pathname: string }) {
   const t = useT();
