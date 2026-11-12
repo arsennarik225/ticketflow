@@ -6,6 +6,10 @@ export interface RequestOptions {
   method?: 'GET' | 'POST' | 'DELETE' | 'PUT' | 'PATCH';
   body?: unknown;
   token?: string;
+  headers?: Record<string, string>;
+  multipart?: FormData;
+  binary?: boolean;
+  signal?: AbortSignal;
 }
 
 export class ApiClient {
@@ -18,6 +22,9 @@ export class ApiClient {
   async request<T>(path: string, decode: Decoder<T>, options: RequestOptions = {}): Promise<T> {
     if (!path.startsWith('/') || path.startsWith('//')) throw new Error('API paths must be relative.');
     const controller = new AbortController();
+    const abort = () => controller.abort();
+    options.signal?.addEventListener('abort', abort);
+    if (options.signal?.aborted) controller.abort();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
       let response: Response;
@@ -29,12 +36,14 @@ export class ApiClient {
             Accept: 'application/json',
             ...(options.body === undefined ? {} : { 'Content-Type': 'application/json' }),
             ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
+            ...options.headers,
           },
-          ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+          ...(options.multipart ? { body: options.multipart } : options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
           signal: controller.signal,
           // Do not follow redirects with authentication credentials.
           redirect: 'error',
         });
+        if (response.ok && options.binary) return decode(new Uint8Array(await response.arrayBuffer()));
         text = response.status === 204 ? '' : await response.text();
       } catch {
         throw new NetworkError();
@@ -55,6 +64,7 @@ export class ApiClient {
       return decode(body);
     } finally {
       clearTimeout(timeout);
+      options.signal?.removeEventListener('abort', abort);
     }
   }
 }

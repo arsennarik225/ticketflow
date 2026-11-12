@@ -1,8 +1,9 @@
-# Event Admin mobile: assigned events and entrance operations
+# Mobile setup and Event Admin entrance operations
 
-Phase 4 adds manual attendee/ticket search, manual admission, and authorized check-in reversal
-to the Phase 1–3 authentication, assigned-events/dashboard, and QR scanner workflow. The app remains online-only.
-Organizer analytics and offline support are not implemented.
+The app now includes native attendee, organizer, support, and admin screens alongside the
+existing assigned-events, scanner, manual admission, and authorized reversal workflow.
+It remains online-only. See the [native feature walkthrough](../../docs/mobile-parity.md).
+This guide's entrance-operation checks apply inside **Menu → Check in**.
 See [OPERATIONS.md](OPERATIONS.md) for the Phase 4 architecture and device acceptance procedure.
 See [SCANNING.md](SCANNING.md) for the Phase 3 device procedure and operational behavior.
 The [README](README.md) summarizes the implemented scope and links these guides.
@@ -112,7 +113,7 @@ the mobile app contains no test-data switch.
 ## Manual Phase 2 checks
 
 1. **Authentication and list:** Sign out of any restored session, try an incorrect password,
-   then sign in as staff. Observe loading followed by the assigned-events list and account email.
+   then sign in as staff and open **Menu → Check in**. Observe the assigned-events list and account email.
    Compare the rows with `GET /v1/checkin/events?assignedOnly=true` authorized as staff in Swagger.
    Check title, time, venue/location, and status. Pull to refresh and use the refresh button;
    existing rows should remain visible during a refresh.
@@ -139,9 +140,11 @@ the mobile app contains no test-data switch.
    the zero-order rehearsal event: it becomes ineligible for the list even though its assignment
    remains. The dashboard must again close on revalidation.
 6. **Role loss and organizer ownership:** Remove all staff assignments, including draft/old ones,
-   then background and foreground the app: `/me` revalidation must show Access Denied. Sign in
-   as the organizer, attendee, and platform-admin-only demo accounts; each must also be denied
-   without an explicit Event Admin assignment. To check ownership with the role present, assign
+   then background and foreground the app: `/me` revalidation must deny the open scanner and
+   remove **Check in** from the menu. The other mobile features remain available. Sign in
+   as the organizer, attendee, and platform-admin-only demo accounts; each can use their native
+   features, but must have no **Check in** menu entry without an explicit Event Admin assignment.
+   To check ownership with the role present, assign
    the organizer's own verified email to one event and sign in as that organizer: only the explicitly
    assigned event belongs in the mobile list, not all owned events. Remove the temporary assignment.
 7. **Network/server failure and retry:** Stop only the API with `docker compose stop api` while
@@ -262,6 +265,7 @@ Transient inactivity from a native permission dialog pauses capture without rest
 session. An interrupted verification must be repeated; an interrupted admission has an uncertain
 outcome. A full background transition still revalidates `/me` and returns to the event list.
 
-`/me` must report both verified email and the backend-issued `event_admin` role. Organizer and
-Platform Admin roles alone grant no mobile access. Server endpoint authorization remains authoritative.
+For scanner access, `/me` must report both verified email and the backend-issued `event_admin`
+role. Organizer and Platform Admin roles alone grant no scanner access; they can use their
+other native screens. Server endpoint authorization remains authoritative.
 No biometric authentication is required, so secure storage works in Expo Go.

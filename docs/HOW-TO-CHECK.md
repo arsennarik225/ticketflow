@@ -10,7 +10,7 @@ npm ci
 npm test
 npm run build
 cd ../mobile
-# Use Node 24 for the staff app.
+# Use Node 24 for the mobile app.
 npm ci
 npm run typecheck
 npm test
@@ -59,6 +59,15 @@ Demo password: `demo12345`. Use separate browser profiles/windows to keep roles 
 Optional seating: configure the predefined venue **before orders exist**, select blocked
 seats, and create one priced ticket type for each seat category. Open the public map in
 two sessions: held/sold seats should update, and a conflicting checkout must fail.
+
+## Native mobile walkthrough
+
+Repeat the role-based browser walkthrough in the Expo app using **Menu** for Events,
+My tickets, My orders, Organizer, Support, Account, and Admin. These are native screens.
+Assigned staff enter the preserved scanner through **Menu → Check in**. Test email links,
+campaign links, native file uploads/downloads, and foreground session restoration using
+the [mobile feature checklist](mobile-parity.md). Automated exports do not replace those
+physical iPhone/Android checks.
 
 ## Old demo data and debugging
 

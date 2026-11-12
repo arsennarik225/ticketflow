@@ -1,9 +1,14 @@
-# BiletFlow Staff
+# BiletFlow mobile
 
-The React Native / Expo SDK 58 app supports verified staff sign-in,
-assigned events, attendance totals, camera verification, deliberate admission, manual search,
-and authorized undo. The MVP is **online-only**; backend offline endpoints are reserved for
-future clients. Tokens use SecureStore; ticket results stay in memory.
+The React Native / Expo SDK 58 app has separate native screens for the website's attendee,
+organizer, support, and platform-admin workflows, plus the existing staff scanner.
+Browse without signing in; use **Menu** to reach your account's features. **Check in** appears
+only for verified accounts with an Event Admin assignment. Being an organizer or Platform
+Admin does not grant scanner access by itself.
+
+The app is **online-only**. Tokens use SecureStore; guest receipts, checkout retry keys, and
+scanner results stay in memory. Payments and activation remain explicitly simulated.
+See the [feature map and phone walkthrough](../../docs/mobile-parity.md).
 
 ## Run on a phone
 
@@ -23,19 +28,27 @@ future clients. Tokens use SecureStore; ticket results stay in memory.
 4. Open the terminal's project QR in an **Expo Go build matching SDK 58**. On iPhone,
    sign into Expo Go with the same Expo account used by `npx expo login`. A version
    mismatch requires a matching Expo Go/development build; see [SETUP.md](SETUP.md).
-5. Sign in as `staff@biletflow.kz` / `demo12345`, select an assigned event, allow camera
-   access, scan a ticket PDF on another screen or on paper, and press **Check in**.
+5. The app opens on **Events**. In **Menu**, sign in as `attendee@biletflow.kz`,
+   `organizer@biletflow.kz`, or `admin@biletflow.kz` (demo password `demo12345`) to test
+   the corresponding workflows. For scanning, sign in as `staff@biletflow.kz`, open
+   **Menu → Check in**, select an assigned event, allow camera access, scan a ticket PDF
+   on another screen or on paper, and press **Check in**.
 
 A real phone cannot use the computer's `localhost`. An Expo tunnel does not tunnel the API.
 Expo reads `.env`, not `.env.example`. After changing the API URL, stop Metro and restart
 with `npm start -- --go --lan --clear` so the new value is bundled. Keep your machine's
 address in the ignored `.env`; the shared example intentionally has no default address.
-For new staff, register and verify in the web app, then assign that exact email under the
+For new staff, register and verify in either app, then assign that exact email under the
 organizer's **Staff** tab. If demo dates are old, duplicate an event, update dates, publish,
 and assign staff again. To test campaign/email links on the phone, also set root WEB_URL
 and API_URL to LAN URLs and recreate the API with `docker compose up -d api`.
+In Expo Go, **Menu → Open event link** accepts pasted event/campaign links. The sign-in
+screen also links to **Verify email** and **Reset password**, where you can paste the
+email link or token. The installed app registers the `biletflow://` scheme; HTTPS universal
+links are not configured. PDF, CSV, calendar, and attachment downloads use the phone's
+share/save sheet; support uploads use its document picker.
 
-## Acceptance checklist
+## Scanner acceptance checklist
 
 - Valid verification shows the attendee and seat; it does not admit anyone by itself.
 - Check in once, tap **Scan next ticket**, then rescan the same digital/paper ticket.

@@ -2,7 +2,7 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import * as ReactNative from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from '../auth/AuthProvider';
-import { RootNavigator } from '../navigation/RootNavigator';
+import { ScannerNavigator } from '../navigation/ScannerNavigator';
 import { deferred, harness, response, tokenResponse, user } from './helpers';
 
 jest.mock('react-native-safe-area-context', () => require('react-native-safe-area-context/jest/mock').default);
@@ -58,7 +58,7 @@ function scenario() {
 }
 
 function show(h: ReturnType<typeof scenario>) {
-  return render(<SafeAreaProvider><AuthProvider session={h.session}><RootNavigator /></AuthProvider></SafeAreaProvider>);
+  return render(<SafeAreaProvider><AuthProvider session={h.session}><ScannerNavigator /></AuthProvider></SafeAreaProvider>);
 }
 
 async function openFirst(h: ReturnType<typeof scenario>) {

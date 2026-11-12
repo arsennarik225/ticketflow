@@ -91,7 +91,7 @@ Use only disposable local development tickets for mutation tests.
    ```
 
    Scan the launch QR with iPhone Camera and open Expo Go. Permit Local Network access.
-   Sign into BiletFlow as assigned staff; select event A. A Metro tunnel alone does not expose
+   Sign into BiletFlow as assigned staff; open **Menu → Check in** and select event A. A Metro tunnel alone does not expose
    the API, and Ubuntu cannot run the iOS simulator.
 4. Tap **Search attendee / ticket**. Empty input and one trimmed character must not submit.
    Paste more than 100 characters: Search stays disabled. Type a real name, email, then ticket
@@ -201,7 +201,8 @@ Mark a step complete only after observing it on the phone; Jest camera events ar
   restoration; use SETUP.md's expiry/revocation procedure to check renewed and ended sessions.
 - Compare the list to `GET /v1/checkin/events?assignedOnly=true`. Select A, compare totals to
   the attendees endpoint, switch to B, and confirm A's counts and operational state disappear.
-  Check an organizer-only account is denied and an assigned organizer sees only assigned events.
+  Check an organizer-only account has no scanner access (other native screens remain available)
+  and an assigned organizer sees only assigned events in **Check in**.
 - Deny/recover camera permission, scan a valid ticket, and confirm verification alone does not
   admit it. Press Check in once, wait for confirmation, then Scan next. Rescan the used ticket;
   test wrong-event, campaign, invalid, cancelled, and refunded results as in SCANNING.md.

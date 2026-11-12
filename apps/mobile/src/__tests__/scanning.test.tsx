@@ -3,7 +3,7 @@ import { Camera, PermissionResponse } from 'expo-camera';
 import * as ReactNative from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from '../auth/AuthProvider';
-import { RootNavigator } from '../navigation/RootNavigator';
+import { ScannerNavigator } from '../navigation/ScannerNavigator';
 import { deferred, harness, response, tokenResponse, user } from './helpers';
 import { confirmedCheckIn, scanEvent, verificationBody } from './scanFixtures';
 
@@ -54,7 +54,7 @@ function scenario() {
 }
 
 async function openScanner(h: ReturnType<typeof scenario>) {
-  const screen = await render(<SafeAreaProvider><AuthProvider session={h.session}><RootNavigator /></AuthProvider></SafeAreaProvider>);
+  const screen = await render(<SafeAreaProvider><AuthProvider session={h.session}><ScannerNavigator /></AuthProvider></SafeAreaProvider>);
   await fireEvent.press(await screen.findByRole('button', { name: `Open ${scanEvent.title}` }));
   await screen.findByText('20% checked in');
   await fireEvent.press(screen.getByRole('button', { name: 'Scan ticket QR' }));

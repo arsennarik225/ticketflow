@@ -1,7 +1,7 @@
 import { createAuthApi } from '../api/auth';
 import { ApiClient, Decoder, RequestOptions } from '../api/client';
 import { ApiError, AuthExpiredError, errorMessage, SessionChangedError } from '../api/errors';
-import { parseUser, Tokens, User } from '../api/types';
+import { parseTokens, parseUser, Tokens, User } from '../api/types';
 import { SessionStorage } from './sessionStorage';
 
 export type AuthState =
@@ -26,6 +26,23 @@ export class AuthSession {
   }
 
   getState = (): AuthState => this.state;
+  async requestOptional<T>(path: string, decode: Decoder<T>, options: Omit<RequestOptions, 'token'> = {}): Promise<T> {
+    if (this.tokens) return this.request(path, decode, options);
+    const generation = this.generation;
+    const result = await this.client.request(path, decode, options);
+    this.assertCurrent(generation);
+    return result;
+  }
+
+  updateProfile(user: User): void {
+    if ((this.state.status === 'authorized' || this.state.status === 'denied') && this.state.user.id === user.id) {
+      this.publish({ status: user.emailVerified && user.roles.includes('event_admin') ? 'authorized' : 'denied', user });
+    }
+  }
+
+  verifyEmail(token: string): Promise<void> {
+    return this.authenticate(() => this.client.request('/auth/verify-email', parseTokens, { method: 'POST', body: { token } }));
+  }
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => { this.listeners.delete(listener); };
@@ -139,13 +156,17 @@ export class AuthSession {
   }
 
   signIn(email: string, password: string): Promise<void> {
+    return this.authenticate(() => this.auth.login(email.trim(), password));
+  }
+
+  private authenticate(login: () => Promise<Tokens>): Promise<void> {
     if (this.signingIn) return this.signingIn;
     if (this.state.status !== 'signedOut') return Promise.reject(new SessionChangedError());
     const generation = ++this.generation;
     this.publish({ status: 'signedOut' });
     const operation = (async () => {
       try {
-        const tokens = await this.auth.login(email.trim(), password);
+        const tokens = await login();
         if (generation !== this.generation) {
           await this.auth.logout(tokens).catch(() => undefined);
           throw new SessionChangedError();
