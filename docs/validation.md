@@ -1,5 +1,29 @@
 # Validation — 29 October 2026
 
+## Browser acceptance — 21 November 2026
+
+First hand-executed walkthrough of the web client against a locally running
+stack (commit `f0f3a62`). Automated suites cover code paths; this records
+observed behaviour in a browser.
+
+| Check | Result | Note |
+| --- | --- | --- |
+| Register attendee and organizer accounts | Pass | |
+| Email verification delivered | Pass | confirmed in Mailpit |
+| Password reset and change | Pass | |
+| Organizer publishes an event | Pass | requires a ticket type and a future end date |
+| Event search | Pass | |
+| Attendee orders tickets | Pass | |
+| Promo code applied | Pass | |
+| Promo code from another event refused | Pass | `promo_code_invalid`; codes are scoped per event |
+| Ticket QR issued | Pass | |
+| Ticket copy delivered by email | Pass | |
+| Declined payment | Pass ||
+
+Not covered in this pass: printed-ticket scanning, mobile check-in, duplicate-entry rejection, campaign QR rejection at the scanner,
+support cases, analytics cross-check, and admin suspension. The physical
+device walkthrough remains outstanding.
+
 ## Native mobile parity — 7 November 2026
 
 Added separate native screens for attendee, organizer, support and platform-admin web
