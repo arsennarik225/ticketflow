@@ -4,6 +4,8 @@ import * as ReactNative from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from '../auth/AuthProvider';
 import { ScannerNavigator } from '../navigation/ScannerNavigator';
+import { Language, LanguageContext, translate } from '../platform/i18n';
+import { resultCopy } from '../features/checkin/resultCopy';
 import { deferred, harness, response, tokenResponse, user } from './helpers';
 import { confirmedCheckIn, scanEvent, verificationBody } from './scanFixtures';
 
@@ -53,16 +55,20 @@ function scenario() {
   return { ...h, events, totals, verify, admit };
 }
 
-async function openScanner(h: ReturnType<typeof scenario>) {
-  const screen = await render(<SafeAreaProvider><AuthProvider session={h.session}><ScannerNavigator /></AuthProvider></SafeAreaProvider>);
-  await fireEvent.press(await screen.findByRole('button', { name: `Open ${scanEvent.title}` }));
-  await screen.findByText('20% checked in');
-  await fireEvent.press(screen.getByRole('button', { name: 'Scan ticket QR' }));
+function scannerTree(h: ReturnType<typeof scenario>, language: Language) {
+  return <LanguageContext.Provider value={language}><SafeAreaProvider><AuthProvider session={h.session}><ScannerNavigator /></AuthProvider></SafeAreaProvider></LanguageContext.Provider>;
+}
+
+async function openScanner(h: ReturnType<typeof scenario>, language: Language = 'en') {
+  const screen = await render(scannerTree(h, language));
+  await fireEvent.press(await screen.findByRole('button', { name: translate('Open {title}', language, { title: scanEvent.title }) }));
+  await screen.findByText(translate('{percent}% checked in', language, { percent: 20 }));
+  await fireEvent.press(screen.getByRole('button', { name: translate('Scan ticket QR', language) }));
   return screen;
 }
 
-async function scan(screen: Awaited<ReturnType<typeof openScanner>>, payload = 'opaque-test-qr') {
-  const camera = await screen.findByLabelText('Admission ticket QR camera');
+async function scan(screen: Awaited<ReturnType<typeof openScanner>>, payload = 'opaque-test-qr', language: Language = 'en') {
+  const camera = await screen.findByLabelText(translate('Admission ticket QR camera', language));
   await fireEvent(camera, 'cameraReady');
   await fireEvent(camera, 'barcodeScanned', { data: payload, type: 'qr' });
   return camera;
@@ -359,4 +365,89 @@ test('a camera that never initializes times out into a retryable unavailable sta
     expect(screen.queryByLabelText('Admission ticket QR camera')).toBeNull();
     await screen.unmount();
   } finally { jest.useRealTimers(); }
+});
+
+const statuses = ['valid', 'invalid', 'cancelled', 'refunded', 'already_used', 'wrong_event', 'rejected_campaign_qr'] as const;
+const localizedResults: [Language, string[]][] = [
+  ['en', ['Valid ticket', 'Invalid ticket', 'Cancelled ticket', 'Refunded ticket', 'Already checked in', 'Ticket belongs to another event', 'Campaign QR — not an admission ticket']],
+  ['ru', ['Действительный билет', 'Недействительный билет', 'Отменённый билет', 'Билет с возвратом', 'Вход уже отмечен', 'Билет на другое событие', 'QR-код кампании — не входной билет']],
+  ['kk', ['Жарамды билет', 'Жарамсыз билет', 'Күші жойылған билет', 'Қайтарылған билет', 'Кіру тіркелген', 'Билет басқа іс-шараға тиесілі', 'Науқан QR коды — кіру билеті емес']],
+];
+test.each(localizedResults.flatMap(([language, titles]) => statuses.map((status, index) => [language, status, titles[index]!] as const)))(
+  '%s scanner translates %s and retains admission rules', async (language, status, title) => {
+    const h = scenario();
+    h.verify.mockReturnValueOnce(response(verificationBody(status)));
+    const screen = await openScanner(h, language);
+    await scan(screen, 'opaque-test-qr', language);
+    await screen.findByText(title);
+    expect(screen.getByText(translate(resultCopy[status].detail, language))).toBeTruthy();
+    if (language !== 'en') expect(screen.queryByText(resultCopy[status].detail)).toBeNull();
+    if (status === 'valid') {
+      expect(screen.getByRole('button', { name: translate('Check in', language) })).toBeEnabled();
+      // Attendee and ticket-type data keep the server's original text.
+      expect(screen.getByText('Test Attendee')).toBeTruthy();
+      expect(screen.getByText('General admission')).toBeTruthy();
+    } else expect(screen.queryByRole('button', { name: translate('Check in', language) })).toBeNull();
+    expect(screen.getByRole('button', { name: translate('Scan next ticket', language) })).toBeEnabled();
+    expect(h.verify).toHaveBeenCalledTimes(1);
+    expect(h.admit).not.toHaveBeenCalled();
+  },
+);
+
+test('language changes keep the verified ticket and pending admission without repeating requests', async () => {
+  const h = scenario();
+  const screen = await openScanner(h);
+  await scan(screen);
+  await screen.findByText('Valid ticket');
+  await screen.rerender(scannerTree(h, 'ru'));
+  expect(screen.getByText('Действительный билет')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Отметить вход' })).toBeEnabled();
+  await screen.rerender(scannerTree(h, 'kk'));
+  expect(screen.getByText('Жарамды билет')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Кіруді тіркеу' })).toBeEnabled();
+  expect(h.verify).toHaveBeenCalledTimes(1);
+  expect(getPermission).toHaveBeenCalledTimes(1);
+  const pending = deferred<Response>();
+  h.admit.mockReturnValueOnce(pending.promise);
+  await fireEvent.press(screen.getByRole('button', { name: 'Кіруді тіркеу' }));
+  await screen.rerender(scannerTree(h, 'ru'));
+  expect(screen.getByRole('button', { name: 'Отмечаем вход…' })).toBeDisabled();
+  expect(h.admit).toHaveBeenCalledTimes(1);
+  await act(async () => { pending.resolve(response(confirmedCheckIn, 201)); });
+  await screen.findByText('Вход подтверждён');
+  await screen.rerender(scannerTree(h, 'kk'));
+  expect(screen.getByText('Кіру расталды')).toBeTruthy();
+  expect(screen.getByText('Сервер осы билет бойынша кіруді растады.')).toBeTruthy();
+  expect(h.admit).toHaveBeenCalledTimes(1);
+  expect(h.verify).toHaveBeenCalledTimes(1);
+});
+
+test.each([
+  ['en', 'Camera access denied', 'Allow camera access'],
+  ['ru', 'Доступ к камере запрещён', 'Разрешить доступ к камере'],
+  ['kk', 'Камераға рұқсат берілмеген', 'Камераға рұқсат беру'],
+] as const)('%s camera denial is translated and offers permission recovery', async (language, title, action) => {
+  getPermission.mockResolvedValueOnce({ ...granted, granted: false, status: 'denied' as PermissionResponse['status'], canAskAgain: true });
+  const h = scenario();
+  const screen = await openScanner(h, language);
+  await screen.findByText(title);
+  await fireEvent.press(screen.getByRole('button', { name: action }));
+  await screen.findByLabelText(translate('Admission ticket QR camera', language));
+  expect(requestPermission).toHaveBeenCalledTimes(1);
+  expect(h.verify).not.toHaveBeenCalled();
+});
+
+test.each([
+  ['en', 'Unable to verify ticket', 'Unable to reach the server. Check your connection and try again.'],
+  ['ru', 'Не удалось проверить билет', 'Не удалось связаться с сервером. Проверьте подключение и повторите попытку.'],
+  ['kk', 'Билетті тексеру мүмкін болмады', 'Серверге қосылу мүмкін болмады. Байланысты тексеріп, қайталап көріңіз.'],
+] as const)('%s verification errors use translated safe copy', async (language, title, message) => {
+  const h = scenario();
+  h.verify.mockRejectedValueOnce(new Error('Private backend trace'));
+  const screen = await openScanner(h, language);
+  await scan(screen, 'opaque-test-qr', language);
+  await screen.findByText(title);
+  expect(screen.getByText(message)).toBeTruthy();
+  expect(screen.queryByText('Private backend trace')).toBeNull();
+  expect(h.admit).not.toHaveBeenCalled();
 });

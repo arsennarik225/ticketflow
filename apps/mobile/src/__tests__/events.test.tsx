@@ -3,6 +3,7 @@ import * as ReactNative from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from '../auth/AuthProvider';
 import { ScannerNavigator } from '../navigation/ScannerNavigator';
+import { LanguageContext } from '../platform/i18n';
 import { deferred, harness, response, tokenResponse, user } from './helpers';
 
 jest.mock('react-native-safe-area-context', () => require('react-native-safe-area-context/jest/mock').default);
@@ -58,7 +59,7 @@ function scenario() {
 }
 
 function show(h: ReturnType<typeof scenario>) {
-  return render(<SafeAreaProvider><AuthProvider session={h.session}><ScannerNavigator /></AuthProvider></SafeAreaProvider>);
+  return render(<LanguageContext.Provider value="en"><SafeAreaProvider><AuthProvider session={h.session}><ScannerNavigator /></AuthProvider></SafeAreaProvider></LanguageContext.Provider>);
 }
 
 async function openFirst(h: ReturnType<typeof scenario>) {

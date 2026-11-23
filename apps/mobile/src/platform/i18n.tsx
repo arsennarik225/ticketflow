@@ -5,7 +5,7 @@ export type Language = 'kk' | 'ru' | 'en';
 export const LanguageContext = createContext<Language>('ru');
 const rows = [
   ['Menu', 'Меню', 'Мәзір'],
-  ['Check in', 'Проверка билетов', 'Билеттерді тексеру'],
+  ['Check in', 'Отметить вход', 'Кіруді тіркеу'],
   ['Email link or token', 'Ссылка или код из письма', 'Хаттағы сілтеме немесе код'],
   ['Open event link', 'Открыть ссылку на событие', 'Іс-шара сілтемесін ашу'],
   ['Event link', 'Ссылка на событие', 'Іс-шара сілтемесі'],
@@ -347,11 +347,397 @@ const rows = [
     'Условия: оплата является симуляцией. Организатор отвечает за данные события и возвраты; активация невозвратная.',
     'Шарттар: төлем симуляция болып табылады. Ұйымдастырушы іс-шара ақпараты мен қайтаруға жауапты; белсендіру ақысы қайтарылмайды.',
   ],
+  [
+    'Access changed. Returning to your authorized screens…',
+    'Доступ изменился. Возвращаемся к доступным экранам…',
+    'Қолжетімділік өзгерді. Рұқсат етілген экрандарға оралу…',
+  ],
+  ['Admission ticket QR camera', 'Камера для QR-кода входного билета', 'Кіру билетінің QR кодына арналған камера'],
+  ['Allow camera access', 'Разрешить доступ к камере', 'Камераға рұқсат беру'],
+  [
+    'Allow camera access to scan admission ticket QR codes.',
+    'Разрешите доступ к камере для сканирования QR-кодов входных билетов.',
+    'Кіру билеттерінің QR кодтарын сканерлеу үшін камераға рұқсат беріңіз.',
+  ],
+  ['Already checked in', 'Вход уже отмечен', 'Кіру тіркелген'],
+  [
+    'Ask the event organizer to confirm your staff assignment. Your account email must also be verified.',
+    'Попросите организатора подтвердить ваше назначение сотрудником. Почта аккаунта также должна быть подтверждена.',
+    'Ұйымдастырушыдан қызметкер ретінде тағайындалуыңызды растауды сұраңыз. Тіркелгі поштаңыз да расталуы керек.',
+  ],
+  ['Assigned events', 'Назначенные события', 'Тағайындалған іс-шаралар'],
+  [
+    'Assigned events are not accessible. Contact your event administrator or try again.',
+    'Назначенные события недоступны. Обратитесь к администратору события или повторите попытку.',
+    'Тағайындалған іс-шаралар қолжетімсіз. Іс-шара әкімшісіне хабарласыңыз немесе қайталап көріңіз.',
+  ],
+  ['Attendance progress', 'Доля вошедших участников', 'Кірген қатысушылар үлесі'],
+  ['Back to event', 'К событию', 'Іс-шараға оралу'],
+  ['Back to events', 'К событиям', 'Іс-шараларға оралу'],
+  ['Camera access denied', 'Доступ к камере запрещён', 'Камераға рұқсат берілмеген'],
+  ['Camera access needed', 'Нужен доступ к камере', 'Камераға рұқсат қажет'],
+  [
+    'Camera permission could not be checked. Please try again.',
+    'Не удалось проверить доступ к камере. Повторите попытку.',
+    'Камераға рұқсатты тексеру мүмкін болмады. Қайталап көріңіз.',
+  ],
+  ['Campaign QR — not an admission ticket', 'QR-код кампании — не входной билет', 'Науқан QR коды — кіру билеті емес'],
+  ['Cancel reversal', 'Не отменять вход', 'Кіруді болдырмаудан бас тарту'],
+  ['Cancelled ticket', 'Отменённый билет', 'Күші жойылған билет'],
+  ['Check access again', 'Проверить доступ снова', 'Қолжетімділікті қайта тексеру'],
+  ['Check camera permission again', 'Проверить доступ к камере снова', 'Камераға рұқсатты қайта тексеру'],
+  ['Check in {ticket}', 'Отметить вход {ticket}', 'Кіруді тіркеу {ticket}'],
+  ['Check-in confirmed', 'Вход подтверждён', 'Кіру расталды'],
+  ['Check-in outcome unknown', 'Результат отметки входа неизвестен', 'Кіруді тіркеу нәтижесі белгісіз'],
+  ['Check-in was not accepted', 'Отметка входа не принята', 'Кіруді тіркеу қабылданбады'],
+  ['Check-in was refused.', 'В отметке входа отказано.', 'Кіруді тіркеуден бас тартылды.'],
+  [
+    'Check-in was refused. The latest server result is shown above.',
+    'В отметке входа отказано. Выше показан актуальный ответ сервера.',
+    'Кіруді тіркеуден бас тартылды. Жоғарыда сервердің соңғы нәтижесі көрсетілген.',
+  ],
+  ['Checking camera permission…', 'Проверка доступа к камере…', 'Камераға рұқсатты тексеру…'],
+  ['Checking current ticket status…', 'Проверка текущего статуса билета…', 'Билеттің ағымдағы күйін тексеру…'],
+  ['Checking in…', 'Отмечаем вход…', 'Кіруді тіркеу…'],
+  [
+    'Choose the event you are working at.',
+    'Выберите событие, на котором вы работаете.',
+    'Өзіңіз жұмыс істейтін іс-шараны таңдаңыз.',
+  ],
+  ['Confirm reversal', 'Подтвердить отмену входа', 'Кіруді болдырмауды растау'],
+  ['EVENT ADMIN', 'АДМИНИСТРАТОР СОБЫТИЯ', 'ІС-ШАРА ӘКІМШІСІ'],
+  [
+    'Enter at least 2 characters to search by name, email, or ticket number.',
+    'Введите не менее 2 символов для поиска по имени, почте или номеру билета.',
+    'Аты, поштасы немесе билет нөмірі бойынша іздеу үшін кемінде 2 таңба енгізіңіз.',
+  ],
+  ['Enter search text', 'Введите текст для поиска', 'Іздеу мәтінін енгізіңіз'],
+  ['Enter your email and password.', 'Введите почту и пароль.', 'Поштаңыз бен құпиясөзіңізді енгізіңіз.'],
+  ['Event Admin access required', 'Нужен доступ администратора события', 'Іс-шара әкімшісінің рұқсаты қажет'],
+  [
+    'Event assignment could not be refreshed.',
+    'Не удалось обновить назначение на событие.',
+    'Іс-шараға тағайындауды жаңарту мүмкін болмады.',
+  ],
+  ['Finish signing out', 'Завершите выход', 'Шығуды аяқтаңыз'],
+  ['Invalid ticket', 'Недействительный билет', 'Жарамсыз билет'],
+  [
+    'Leaving this screen will not cancel a request already received by the server. Reverify the ticket if you leave before confirmation.',
+    'Выход с экрана не отменит уже полученный сервером запрос. Если вы вышли до подтверждения, проверьте билет снова.',
+    'Бұл экраннан шығу сервер қабылдаған сұрауды тоқтатпайды. Растауды күтпей шықсаңыз, билетті қайта тексеріңіз.',
+  ],
+  [
+    'Leaving this screen will not cancel a request already received by the server. Search again if you leave before confirmation.',
+    'Выход с экрана не отменит уже полученный сервером запрос. Если вы вышли до подтверждения, повторите поиск.',
+    'Бұл экраннан шығу сервер қабылдаған сұрауды тоқтатпайды. Растауды күтпей шықсаңыз, қайта іздеңіз.',
+  ],
+  ['Loading assigned events…', 'Загрузка назначенных событий…', 'Тағайындалған іс-шаралар жүктелуде…'],
+  ['Loading attendance…', 'Загрузка посещаемости…', 'Қатысу деректері жүктелуде…'],
+  ['Name, email, or ticket number', 'Имя, почта или номер билета', 'Аты, поштасы немесе билет нөмірі'],
+  [
+    'Narrow your search to find more specific matches.',
+    'Уточните запрос для более точных результатов.',
+    'Нақты нәтижелерді табу үшін сұрауды нақтылаңыз.',
+  ],
+  [
+    'No assigned events are currently available.',
+    'Сейчас нет доступных назначенных событий.',
+    'Қазір қолжетімді тағайындалған іс-шаралар жоқ.',
+  ],
+  ['No matching attendees or tickets.', 'Участники или билеты не найдены.', 'Қатысушылар немесе билеттер табылмады.'],
+  ['No registrations yet.', 'Регистраций пока нет.', 'Әзірге тіркелгендер жоқ.'],
+  ['Open camera settings', 'Открыть настройки камеры', 'Камера баптауларын ашу'],
+  [
+    'Open your device settings and enable camera access for this app.',
+    'Откройте настройки устройства и разрешите этому приложению доступ к камере.',
+    'Құрылғы баптауларын ашып, осы қолданбаға камераны пайдалануға рұқсат беріңіз.',
+  ],
+  ['Open {title}', 'Открыть {title}', 'Ашу: {title}'],
+  ['Please wait', 'Подождите', 'Күте тұрыңыз'],
+  [
+    'Point the camera at one admission ticket QR.',
+    'Наведите камеру на QR-код одного входного билета.',
+    'Камераны бір кіру билетінің QR кодына бағыттаңыз.',
+  ],
+  ['Refresh events', 'Обновить события', 'Іс-шараларды жаңарту'],
+  ['Refresh results', 'Обновить результаты', 'Нәтижелерді жаңарту'],
+  ['Refresh totals', 'Обновить показатели', 'Көрсеткіштерді жаңарту'],
+  ['Refunded ticket', 'Билет с возвратом', 'Қайтарылған билет'],
+  ['Requesting camera permission…', 'Запрос доступа к камере…', 'Камераға рұқсат сұрау…'],
+  ['Restoring your session…', 'Восстановление сессии…', 'Сессияны қалпына келтіру…'],
+  ['Retry camera', 'Запустить камеру снова', 'Камераны қайта іске қосу'],
+  ['Retry camera permission', 'Повторить проверку доступа к камере', 'Камераға рұқсатты қайта тексеру'],
+  ['Retry sign out', 'Повторить выход', 'Шығуды қайталау'],
+  ['Reverify ticket', 'Проверить билет снова', 'Билетті қайта тексеру'],
+  ['Reversal confirmed', 'Отмена входа подтверждена', 'Кіруді болдырмау расталды'],
+  ['Reversal not permitted', 'Отмена входа запрещена', 'Кіруді болдырмауға рұқсат жоқ'],
+  ['Reversal outcome unknown', 'Результат отмены входа неизвестен', 'Кіруді болдырмау нәтижесі белгісіз'],
+  ['Reversal was not accepted', 'Отмена входа не принята', 'Кіруді болдырмау қабылданбады'],
+  ['Reverse this check-in?', 'Отменить эту отметку входа?', 'Осы кіруді тіркеуді болдырмау керек пе?'],
+  ['Scan next ticket', 'Сканировать следующий билет', 'Келесі билетті сканерлеу'],
+  ['Scan ticket QR', 'Сканировать QR-код билета', 'Билет QR кодын сканерлеу'],
+  [
+    'Scanner paused while the app is inactive.',
+    'Сканер приостановлен, пока приложение неактивно.',
+    'Қолданба белсенді емес кезде сканер кідіртіледі.',
+  ],
+  [
+    'Scanning only verifies the ticket. You must confirm Check in separately.',
+    'Сканирование только проверяет билет. Отметку входа нужно подтвердить отдельно.',
+    'Сканерлеу тек билетті тексереді. Кіруді тіркеуді бөлек растау қажет.',
+  ],
+  [
+    'Scanning was interrupted. Verify this ticket again before checking in.',
+    'Сканирование прервано. Перед отметкой входа проверьте билет снова.',
+    'Сканерлеу үзілді. Кіруді тіркемес бұрын билетті қайта тексеріңіз.',
+  ],
+  ['Search attendee / ticket', 'Найти участника / билет', 'Қатысушыны / билетті іздеу'],
+  ['Search attendees / tickets', 'Поиск участников / билетов', 'Қатысушыларды / билеттерді іздеу'],
+  [
+    'Search returns up to 50 matches, not the full attendee list.',
+    'Поиск возвращает до 50 совпадений, а не весь список участников.',
+    'Іздеу қатысушылардың толық тізімін емес, 50-ге дейін нәтижені көрсетеді.',
+  ],
+  [
+    'Search this event by attendee name, email, or ticket number. Enter 2–100 characters.',
+    'Ищите в этом событии по имени, почте или номеру билета. Введите 2–100 символов.',
+    'Осы іс-шарадан қатысушының аты, поштасы немесе билет нөмірі бойынша іздеңіз. 2–100 таңба енгізіңіз.',
+  ],
+  ['Searching this event…', 'Поиск в этом событии…', 'Осы іс-шарадан іздеу…'],
+  ['Seat', 'Место', 'Орын'],
+  [
+    'Seat: {section}, row {row}, number {number}',
+    'Место: {section}, ряд {row}, номер {number}',
+    'Орын: {section}, {row}-қатар, {number}-орын',
+  ],
+  [
+    'Secure storage is unavailable. Unlock your device and try again.',
+    'Защищённое хранилище недоступно. Разблокируйте устройство и повторите попытку.',
+    'Қауіпсіз сақтау орны қолжетімсіз. Құрылғы құлпын ашып, қайталап көріңіз.',
+  ],
+  [
+    'Showing the last loaded events. Pull down or retry to update.',
+    'Показаны последние загруженные события. Потяните вниз или повторите попытку для обновления.',
+    'Соңғы жүктелген іс-шаралар көрсетілген. Жаңарту үшін төмен тартыңыз немесе қайталап көріңіз.',
+  ],
+  [
+    'Showing the last loaded matches. Refresh results before checking in or reversing a check-in.',
+    'Показаны последние загруженные совпадения. Обновите результаты перед отметкой или отменой входа.',
+    'Соңғы жүктелген нәтижелер көрсетілген. Кіруді тіркемес немесе болдырмас бұрын нәтижелерді жаңартыңыз.',
+  ],
+  [
+    'Showing the last loaded totals. Refresh to get current attendance.',
+    'Показаны последние загруженные показатели. Обновите их для актуальных данных.',
+    'Соңғы жүктелген көрсеткіштер көрсетілген. Ағымдағы қатысу деректері үшін жаңартыңыз.',
+  ],
+  [
+    'Sign in with the account assigned to your event.',
+    'Войдите в аккаунт, назначенный на ваше событие.',
+    'Іс-шараңызға тағайындалған тіркелгімен кіріңіз.',
+  ],
+  [
+    'Signed out on this device. Server sign-out could not be confirmed.',
+    'Выход на устройстве выполнен. Не удалось подтвердить выход на сервере.',
+    'Осы құрылғыда шығу орындалды. Серверде шығуды растау мүмкін болмады.',
+  ],
+  ['Signing in…', 'Вход…', 'Кіру…'],
+  ['Signing out…', 'Выход…', 'Шығу…'],
+  [
+    'Something went wrong. Please try again.',
+    'Произошла ошибка. Повторите попытку.',
+    'Қате орын алды. Қайталап көріңіз.',
+  ],
+  [
+    'Staff access · Online verification',
+    'Доступ для сотрудников · Онлайн-проверка',
+    'Қызметкерлерге қолжетімділік · Онлайн тексеру',
+  ],
+  ['Staff sign in', 'Вход для сотрудников', 'Қызметкерлерге кіру'],
+  ['Starting camera…', 'Запуск камеры…', 'Камера іске қосылуда…'],
+  [
+    'Submitting check-in… Wait for confirmation before admitting.',
+    'Отправка отметки входа… Дождитесь подтверждения, прежде чем пропускать.',
+    'Кіруді тіркеу жіберілуде… Кіргізбес бұрын растауды күтіңіз.',
+  ],
+  [
+    'Submitting reversal… Wait for server confirmation.',
+    'Отправка отмены входа… Дождитесь подтверждения сервера.',
+    'Кіруді болдырмау жіберілуде… Сервердің растауын күтіңіз.',
+  ],
+  [
+    'The camera is unavailable or could not start. Close other camera apps and try again on a physical device.',
+    'Камера недоступна или не запустилась. Закройте другие приложения с камерой и повторите попытку на физическом устройстве.',
+    'Камера қолжетімсіз немесе іске қосылмады. Камераны пайдаланатын басқа қолданбаларды жауып, нақты құрылғыда қайталап көріңіз.',
+  ],
+  [
+    'The earlier check-in outcome is still unknown.',
+    'Результат предыдущей отметки входа всё ещё неизвестен.',
+    'Алдыңғы кіруді тіркеу нәтижесі әлі белгісіз.',
+  ],
+  ['The email or password is incorrect.', 'Неверная почта или пароль.', 'Пошта немесе құпиясөз қате.'],
+  [
+    'The request could not be completed. Please try again.',
+    'Не удалось выполнить запрос. Повторите попытку.',
+    'Сұрауды орындау мүмкін болмады. Қайталап көріңіз.',
+  ],
+  [
+    'The request may have completed, but confirmation was not received. Do not assume entry succeeded or failed. Verify this ticket again before taking another action.',
+    'Запрос мог выполниться, но подтверждение не получено. Нельзя считать вход успешным или неуспешным. Проверьте билет снова перед следующим действием.',
+    'Сұрау орындалған болуы мүмкін, бірақ растау алынбады. Кіру сәтті не сәтсіз болды деп есептемеңіз. Келесі әрекеттен бұрын билетті қайта тексеріңіз.',
+  ],
+  [
+    'The request may have completed, but confirmation was not received. Refresh current ticket status before another action. A refreshed status cannot identify which device completed the earlier request.',
+    'Запрос мог выполниться, но подтверждение не получено. Обновите статус билета перед следующим действием. Обновлённый статус не определяет, какое устройство выполнило предыдущий запрос.',
+    'Сұрау орындалған болуы мүмкін, бірақ растау алынбады. Келесі әрекеттен бұрын билет күйін жаңартыңыз. Жаңартылған күй алдыңғы сұрауды қай құрылғы орындағанын анықтай алмайды.',
+  ],
+  [
+    'The saved session could not be removed. Unlock this device and retry sign out.',
+    'Не удалось удалить сохранённую сессию. Разблокируйте устройство и повторите выход.',
+    'Сақталған сессияны жою мүмкін болмады. Құрылғы құлпын ашып, шығуды қайталаңыз.',
+  ],
+  [
+    'The server confirmed entry for this ticket.',
+    'Сервер подтвердил вход по этому билету.',
+    'Сервер осы билет бойынша кіруді растады.',
+  ],
+  [
+    'The server confirms this check-in is reversed. Current ticket eligibility is shown only after search refreshes.',
+    'Сервер подтвердил отмену входа. Текущая действительность билета будет показана только после обновления поиска.',
+    'Сервер кіруді болдырмауды растады. Билеттің ағымдағы жарамдылығы іздеу жаңартылғаннан кейін ғана көрсетіледі.',
+  ],
+  [
+    'The server could not find this record. Refreshing current search results.',
+    'Сервер не нашёл запись. Обновляем результаты поиска.',
+    'Сервер жазбаны таппады. Іздеу нәтижелері жаңартылуда.',
+  ],
+  [
+    'The server did not recognize a valid admission ticket. Do not admit.',
+    'Сервер не распознал действительный входной билет. Не пропускайте.',
+    'Сервер жарамды кіру билетін танымады. Кіргізбеңіз.',
+  ],
+  [
+    'The server now confirms an active check-in. It cannot identify which device completed the earlier request.',
+    'Сервер подтверждает действующую отметку входа. Он не может определить, какое устройство выполнило предыдущий запрос.',
+    'Сервер белсенді кіру тіркеуін растады. Ол алдыңғы сұрауды қай құрылғы орындағанын анықтай алмайды.',
+  ],
+  [
+    'The server returned an unexpected response. Please try again.',
+    'Сервер вернул неожиданный ответ. Повторите попытку.',
+    'Серверден күтпеген жауап алынды. Қайталап көріңіз.',
+  ],
+  [
+    'The service is temporarily unavailable. Please try again.',
+    'Сервис временно недоступен. Повторите попытку.',
+    'Қызмет уақытша қолжетімсіз. Қайталап көріңіз.',
+  ],
+  [
+    'This QR could not be submitted for verification. Ask for the admission ticket QR and scan again.',
+    'Не удалось отправить QR-код на проверку. Попросите QR-код входного билета и отсканируйте снова.',
+    'Бұл QR кодын тексеруге жіберу мүмкін болмады. Кіру билетінің QR кодын сұрап, қайта сканерлеңіз.',
+  ],
+  [
+    'This account is suspended. Contact your administrator.',
+    'Аккаунт заблокирован. Обратитесь к администратору.',
+    'Тіркелгі бұғатталған. Әкімшіге хабарласыңыз.',
+  ],
+  [
+    'This event is no longer available in your assigned events. Choose another event or contact your event administrator.',
+    'Это событие больше недоступно среди назначенных. Выберите другое событие или обратитесь к его администратору.',
+    'Бұл іс-шара тағайындалған іс-шаралар арасында енді қолжетімсіз. Басқа іс-шараны таңдаңыз немесе іс-шара әкімшісіне хабарласыңыз.',
+  ],
+  [
+    'This is the current server status. The earlier request outcome was not confirmed.',
+    'Это текущий статус на сервере. Результат предыдущего запроса не подтверждён.',
+    'Бұл сервердегі ағымдағы күй. Алдыңғы сұраудың нәтижесі расталмады.',
+  ],
+  [
+    'This promotional QR cannot grant entry. Ask for the admission ticket QR.',
+    'Этот рекламный QR-код не даёт права входа. Попросите QR-код входного билета.',
+    'Бұл жарнамалық QR коды кіруге құқық бермейді. Кіру билетінің QR кодын сұраңыз.',
+  ],
+  [
+    'This reverses the recorded admission. Confirm only if this attendee’s check-in should be undone. The audit record is kept.',
+    'Это отменит записанный вход. Подтверждайте только если нужно отменить вход этого участника. Запись в журнале сохранится.',
+    'Бұл тіркелген кіруді болдырмайды. Осы қатысушының кіруін болдырмау қажет болса ғана растаңыз. Аудит жазбасы сақталады.',
+  ],
+  [
+    'This ticket already has an active check-in. Do not admit again.',
+    'По этому билету уже отмечен вход. Не пропускайте повторно.',
+    'Бұл билет бойынша кіру тіркелген. Қайта кіргізбеңіз.',
+  ],
+  [
+    'This ticket cannot be used at the selected event.',
+    'Этот билет нельзя использовать на выбранном событии.',
+    'Бұл билетті таңдалған іс-шарада пайдалануға болмайды.',
+  ],
+  [
+    'This ticket has been refunded. Do not admit.',
+    'По этому билету выполнен возврат. Не пропускайте.',
+    'Бұл билет қайтарылған. Кіргізбеңіз.',
+  ],
+  [
+    'This ticket is cancelled. Do not admit.',
+    'Этот билет отменён. Не пропускайте.',
+    'Бұл билеттің күші жойылған. Кіргізбеңіз.',
+  ],
+  ['Ticket belongs to another event', 'Билет на другое событие', 'Билет басқа іс-шараға тиесілі'],
+  ['Ticket or check-in unavailable', 'Билет или отметка входа недоступны', 'Билет немесе кіру тіркеуі қолжетімсіз'],
+  ['Ticket scanner', 'Сканер билетов', 'Билет сканері'],
+  [
+    'To scan another ticket or check this ticket again, tap Scan next ticket.',
+    'Чтобы сканировать другой билет или проверить этот снова, нажмите «Сканировать следующий билет».',
+    'Басқа билетті сканерлеу немесе осы билетті қайта тексеру үшін «Келесі билетті сканерлеу» түймесін басыңыз.',
+  ],
+  [
+    'Too many attempts. Please wait before trying again.',
+    'Слишком много попыток. Подождите перед повторной попыткой.',
+    'Тым көп әрекет жасалды. Қайталап көрмес бұрын күте тұрыңыз.',
+  ],
+  [
+    'Unable to reach the server. Check your connection and try again.',
+    'Не удалось связаться с сервером. Проверьте подключение и повторите попытку.',
+    'Серверге қосылу мүмкін болмады. Байланысты тексеріп, қайталап көріңіз.',
+  ],
+  ['Unable to restore your session', 'Не удалось восстановить сессию', 'Сессияны қалпына келтіру мүмкін болмады'],
+  ['Unable to verify ticket', 'Не удалось проверить билет', 'Билетті тексеру мүмкін болмады'],
+  ['Undo check-in {ticket}', 'Отменить вход {ticket}', 'Кіруді болдырмау {ticket}'],
+  ['Updating attendance…', 'Обновление посещаемости…', 'Қатысу деректері жаңартылуда…'],
+  [
+    'Use no more than 100 characters for your search.',
+    'Используйте не более 100 символов для поиска.',
+    'Іздеу үшін 100 таңбадан артық пайдаланбаңыз.',
+  ],
+  ['Valid ticket', 'Действительный билет', 'Жарамды билет'],
+  [
+    'Verified only. This attendee has not been checked in by this scan.',
+    'Билет только проверен. Это сканирование не отметило вход участника.',
+    'Билет тек тексерілді. Бұл сканерлеу қатысушының кіруін тіркеген жоқ.',
+  ],
+  ['Verifying ticket…', 'Проверка билета…', 'Билетті тексеру…'],
+  ['View attendance for this event', 'Посмотреть посещаемость события', 'Осы іс-шараның қатысу деректерін көру'],
+  ['View attendance →', 'Посещаемость →', 'Қатысу деректері →'],
+  [
+    'Your permission to reverse check-ins has changed. The server refused this reversal.',
+    'Ваше разрешение на отмену входа изменилось. Сервер отказал в отмене.',
+    'Кіруді болдырмау рұқсатыңыз өзгерді. Сервер болдырмаудан бас тартты.',
+  ],
+  [
+    'Your session could not be renewed. Please sign in again.',
+    'Не удалось продлить сессию. Войдите снова.',
+    'Сессияны ұзарту мүмкін болмады. Қайта кіріңіз.',
+  ],
+  [
+    'Your session has ended. Please sign in again.',
+    'Сессия завершена. Войдите снова.',
+    'Сессия аяқталды. Қайта кіріңіз.',
+  ],
+  ['{count} search matches.', 'Найдено совпадений: {count}.', 'Табылған нәтижелер: {count}.'],
+  ['{percent}% checked in', 'Вход отмечен у {percent}%', '{percent}% кіруі тіркелген'],
 ] as const;
 const translations = new Map<string, readonly [string, string, string]>(
   rows.map((row) => [row[0], row]),
 );
-export function translate(key: string, language: Language) {
+export function translate(key: string, language: Language, values: Record<string, string | number> = {}) {
   const aliases: Record<string, string> = {
     hasPaidTicketType: 'Paid ticket type added',
     identityVerified: 'Identity verified',
@@ -360,11 +746,12 @@ export function translate(key: string, language: Language) {
     termsAccepted: 'Terms accepted',
   };
   key = aliases[key] || key;
-  return translations.get(key)?.[language === 'ru' ? 1 : language === 'kk' ? 2 : 0] ?? key;
+  const text = translations.get(key)?.[language === 'ru' ? 1 : language === 'kk' ? 2 : 0] ?? key;
+  return text.replace(/\{(\w+)\}/g, (placeholder, name: string) => String(values[name] ?? placeholder));
 }
 export function useT() {
   const language = useContext(LanguageContext);
-  return (key: string) => translate(key, language);
+  return (key: string, values?: Record<string, string | number>) => translate(key, language, values);
 }
 export function money(value?: { amount: number; currency: string }) {
   const locale = preferences.getItem('biletflow.language') || 'ru';

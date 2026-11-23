@@ -3,8 +3,10 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../../components/Button';
 import { colors, Notice, textStyles } from '../../components/Screen';
+import { useT } from '../../platform/i18n';
 
 export function QrCamera({ onScan }: { onScan: (payload: string) => void }) {
+  const t = useT();
   const [permission, setPermission] = useState<PermissionResponse | null>(null);
   const [checking, setChecking] = useState(true);
   const [requesting, setRequesting] = useState(false);
@@ -68,25 +70,25 @@ export function QrCamera({ onScan }: { onScan: (payload: string) => void }) {
   if (checking || requesting) return <View>
     <ActivityIndicator color={colors.primary} />
     <Text accessibilityLiveRegion="polite" style={textStyles.body}>
-      {requesting ? 'Requesting camera permission…' : 'Checking camera permission…'}
+      {t(requesting ? 'Requesting camera permission…' : 'Checking camera permission…')}
     </Text>
   </View>;
-  if (error) return <View><Notice>{error}</Notice>
-    <Button label="Retry camera permission" onPress={() => { void checkPermission(false); }} />
+  if (error) return <View><Notice>{t(error)}</Notice>
+    <Button label={t('Retry camera permission')} onPress={() => { void checkPermission(false); }} />
   </View>;
   if (!permission?.granted) return <View>
     <Text accessibilityRole="header" style={textStyles.title}>
-      {permission?.status === 'denied' ? 'Camera access denied' : 'Camera access needed'}
+      {t(permission?.status === 'denied' ? 'Camera access denied' : 'Camera access needed')}
     </Text>
-    <Text style={textStyles.body}>Allow camera access to scan admission ticket QR codes.</Text>
+    <Text style={textStyles.body}>{t('Allow camera access to scan admission ticket QR codes.')}</Text>
     {permission?.canAskAgain
-      ? <Button label="Allow camera access" onPress={() => { void checkPermission(true); }} />
-      : <Button label="Open camera settings" onPress={() => { void openSettings(); }} />}
-    <Button label="Check camera permission again" secondary onPress={() => { void checkPermission(false); }} />
+      ? <Button label={t('Allow camera access')} onPress={() => { void checkPermission(true); }} />
+      : <Button label={t('Open camera settings')} onPress={() => { void openSettings(); }} />}
+    <Button label={t('Check camera permission again')} secondary onPress={() => { void checkPermission(false); }} />
   </View>;
   if (cameraError) return <View>
-    <Notice>The camera is unavailable or could not start. Close other camera apps and try again on a physical device.</Notice>
-    <Button label="Retry camera" onPress={() => {
+    <Notice>{t('The camera is unavailable or could not start. Close other camera apps and try again on a physical device.')}</Notice>
+    <Button label={t('Retry camera')} onPress={() => {
       cameraAttempt.current++;
       cameraFailed.current = false;
       cameraReady.current = false;
@@ -97,11 +99,11 @@ export function QrCamera({ onScan }: { onScan: (payload: string) => void }) {
   </View>;
   return <View>
     <Text accessibilityLiveRegion="polite" style={textStyles.body}>
-      {ready ? 'Point the camera at one admission ticket QR.' : 'Starting camera…'}
+      {t(ready ? 'Point the camera at one admission ticket QR.' : 'Starting camera…')}
     </Text>
     <CameraView key={cameraKey} style={styles.camera} facing="back" mode="picture" mute
       barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-      accessibilityLabel="Admission ticket QR camera"
+      accessibilityLabel={t('Admission ticket QR camera')}
       onCameraReady={() => {
         if (!mounted.current || cameraKey !== cameraAttempt.current || cameraFailed.current) return;
         cameraReady.current = true;
@@ -111,7 +113,7 @@ export function QrCamera({ onScan }: { onScan: (payload: string) => void }) {
       onBarcodeScanned={({ data }) => {
         if (mounted.current && cameraReady.current && cameraKey === cameraAttempt.current && typeof data === 'string') onScan(data);
       }} />
-    <Text style={styles.help}>Scanning only verifies the ticket. You must confirm Check in separately.</Text>
+    <Text style={styles.help}>{t('Scanning only verifies the ticket. You must confirm Check in separately.')}</Text>
   </View>;
 }
 
