@@ -13,7 +13,8 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY apps/api/requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip==26.3 \
+    && pip install --no-cache-dir -r requirements.txt
 
 COPY apps/api/app ./app
 COPY apps/api/db ./db

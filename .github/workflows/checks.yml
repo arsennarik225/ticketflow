@@ -58,5 +58,9 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
-      - run: npm run check:dependencies
+      - name: Check locked Expo SDK compatibility
+        run: npm run check:dependencies
+        env:
+          # Validate against the locked SDK's bundled matrix, not changing server recommendations.
+          EXPO_OFFLINE: "1"
       - run: npm run export
