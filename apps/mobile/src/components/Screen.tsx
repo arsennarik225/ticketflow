@@ -1,6 +1,7 @@
 import { PropsWithChildren } from 'react';
 import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useT } from '../platform/i18n';
 
 export const colors = {
   background: '#F4F6FA', surface: '#FFFFFF', text: '#17233A', muted: '#526078',
@@ -14,6 +15,7 @@ interface ScreenProps {
 }
 
 export function Screen({ children, topAligned = false, refreshing = false, onRefresh }: PropsWithChildren<ScreenProps>) {
+  const t = useT();
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -23,9 +25,9 @@ export function Screen({ children, topAligned = false, refreshing = false, onRef
             tintColor={colors.primary} /> : undefined}>
           <View style={[styles.content, topAligned && styles.wide]}>
             <Text style={styles.brand}>BiletFlow</Text>
-            <Text style={styles.eyebrow}>EVENT ADMIN</Text>
+            <Text style={styles.eyebrow}>{t('EVENT ADMIN')}</Text>
             <View style={[styles.card, topAligned && styles.operationalCard]}>{children}</View>
-            <Text style={styles.footer}>Staff access · Online verification</Text>
+            <Text style={styles.footer}>{t('Staff access · Online verification')}</Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

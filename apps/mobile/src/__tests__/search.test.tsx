@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Attendee } from '../api/attendeeSearch';
 import { AuthProvider } from '../auth/AuthProvider';
 import { ScannerNavigator } from '../navigation/ScannerNavigator';
+import { Language, LanguageContext, translate } from '../platform/i18n';
 import { deferred, harness, response, tokenResponse, user } from './helpers';
 import { confirmedCheckIn, scanEvent, verificationBody } from './scanFixtures';
 import { checkedRow, matches, searchRow } from './searchFixtures';
@@ -47,16 +48,16 @@ function scenario(initial = searchRow, permission = true) {
   return { ...h, events, totals, search, admit, reverse, verify };
 }
 
-async function openSearch(h: ReturnType<typeof scenario>) {
-  const screen = await render(<SafeAreaProvider><AuthProvider session={h.session}><ScannerNavigator /></AuthProvider></SafeAreaProvider>);
-  await fireEvent.press(await screen.findByRole('button', { name: `Open ${scanEvent.title}` }));
-  await fireEvent.press(await screen.findByRole('button', { name: 'Search attendee / ticket' }));
+async function openSearch(h: ReturnType<typeof scenario>, language: Language = 'en') {
+  const screen = await render(<LanguageContext.Provider value={language}><SafeAreaProvider><AuthProvider session={h.session}><ScannerNavigator /></AuthProvider></SafeAreaProvider></LanguageContext.Provider>);
+  await fireEvent.press(await screen.findByRole('button', { name: translate('Open {title}', language, { title: scanEvent.title }) }));
+  await fireEvent.press(await screen.findByRole('button', { name: translate('Search attendee / ticket', language) }));
   return screen;
 }
 type TestScreen = Awaited<ReturnType<typeof openSearch>>;
-async function search(screen: TestScreen, query = 'Test') {
-  await fireEvent.changeText(screen.getByLabelText('Name, email, or ticket number'), query);
-  await fireEvent.press(screen.getByRole('button', { name: 'Search' }));
+async function search(screen: TestScreen, query = 'Test', language: Language = 'en') {
+  await fireEvent.changeText(screen.getByLabelText(translate('Name, email, or ticket number', language)), query);
+  await fireEvent.press(screen.getByRole('button', { name: translate('Search', language) }));
 }
 async function undo(screen: TestScreen) {
   await fireEvent.press(await screen.findByRole('button', { name: `Undo check-in ${searchRow.ticketNumber}` }));
@@ -403,4 +404,44 @@ test.each(['search', 'admit', 'reverse'] as const)('%s assignment 403 returns th
   await screen.findByText('Assigned events');
   expect(screen.getByText(/no longer available/)).toBeTruthy();
   expect(screen.queryByText('Search attendees / tickets')).toBeNull();
+});
+
+test.each([
+  ['en', 'Status: Already checked in', 'Reverse this check-in?', 'Reversal confirmed'],
+  ['ru', 'Статус: Вход уже отмечен', 'Отменить эту отметку входа?', 'Отмена входа подтверждена'],
+  ['kk', 'Күйі: Кіру тіркелген', 'Осы кіруді тіркеуді болдырмау керек пе?', 'Кіруді болдырмау расталды'],
+] as const)('%s attendee search translates status, dates and reversal without changing ticket data', async (language, status, confirmation, result) => {
+  const h = scenario(checkedRow);
+  const screen = await openSearch(h, language);
+  await search(screen, 'Test', language);
+  await screen.findByText(status);
+  expect(screen.getByText(searchRow.fullName)).toBeTruthy();
+  expect(screen.getByText(searchRow.email)).toBeTruthy();
+  expect(screen.getByText('General admission')).toBeTruthy();
+  const date = new Date(checkedRow.checkedInAt!).toLocaleString(language, { timeZone: scanEvent.timeZone });
+  expect(screen.getByText(`${translate('Checked in', language)}: ${date} (${scanEvent.timeZone})`)).toBeTruthy();
+  await fireEvent.press(screen.getByRole('button', { name: translate('Undo check-in {ticket}', language, { ticket: searchRow.ticketNumber }) }));
+  await screen.findByText(confirmation);
+  expect(h.reverse).not.toHaveBeenCalled();
+  await fireEvent.press(screen.getByRole('button', { name: translate('Confirm reversal', language) }));
+  await screen.findByText(result);
+  expect(h.reverse).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole('button', { name: translate('Check in {ticket}', language, { ticket: searchRow.ticketNumber }) })).toBeEnabled();
+});
+
+test.each([
+  ['en', 'Check-in was refused. This ticket already has an active check-in. Do not admit again.'],
+  ['ru', 'В отметке входа отказано. По этому билету уже отмечен вход. Не пропускайте повторно.'],
+  ['kk', 'Кіруді тіркеуден бас тартылды. Бұл билет бойынша кіру тіркелген. Қайта кіргізбеңіз.'],
+] as const)('%s manual refusal translates the combined warning and blocks another admission', async (language, warning) => {
+  const h = scenario();
+  const screen = await openSearch(h, language);
+  await search(screen, 'Test', language);
+  await screen.findByText(searchRow.fullName);
+  h.admit.mockReturnValueOnce(response(verificationBody('already_used'), 409));
+  h.search.mockReturnValue(response(matches(checkedRow)));
+  await fireEvent.press(screen.getByRole('button', { name: translate('Check in {ticket}', language, { ticket: searchRow.ticketNumber }) }));
+  await screen.findByText(warning);
+  expect(screen.queryByRole('button', { name: translate('Check in {ticket}', language, { ticket: searchRow.ticketNumber }) })).toBeNull();
+  expect(h.admit).toHaveBeenCalledTimes(1);
 });

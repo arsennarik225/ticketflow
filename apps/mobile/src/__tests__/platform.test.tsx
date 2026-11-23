@@ -264,6 +264,28 @@ test('verified staff open the existing native scanner area through the new appli
   ).toBe(true);
 });
 
+test('the existing language selector translates the scanner area without reloading assignments', async () => {
+  const h = harness(tokenResponse);
+  h.fetcher.mockResolvedValueOnce(response(user))
+    .mockImplementation(async () => response({ data: [], total: 0 }));
+  const screen = await show(h);
+  await screen.findByText('Find your next event');
+  await fireEvent.press(screen.getByRole('button', { name: 'Menu' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Check in' }));
+  await screen.findByText('Assigned events');
+  const requests = h.fetcher.mock.calls.length;
+  await fireEvent.press(screen.getByRole('button', { name: 'Language' }));
+  await fireEvent.press(screen.getByRole('radio', { name: 'Русский' }));
+  expect(screen.getByText('Назначенные события')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Обновить события' })).toBeEnabled();
+  await fireEvent.press(screen.getByRole('button', { name: 'Язык' }));
+  await fireEvent.press(screen.getByRole('radio', { name: 'Қазақша' }));
+  expect(screen.getByText('Тағайындалған іс-шаралар')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Іс-шараларды жаңарту' })).toBeEnabled();
+  expect(preferences.getItem('biletflow.language')).toBe('kk');
+  expect(h.fetcher).toHaveBeenCalledTimes(requests);
+});
+
 test('an attendee deep link to administration is rejected without requesting admin data', async () => {
   jest.spyOn(Linking, 'getInitialURL').mockResolvedValue('biletflow://admin');
   const h = harness(tokenResponse);

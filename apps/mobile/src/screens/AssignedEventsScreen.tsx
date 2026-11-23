@@ -4,6 +4,7 @@ import { ApiError, errorMessage } from '../api/errors';
 import { Button } from '../components/Button';
 import { colors, Notice, Screen, textStyles } from '../components/Screen';
 import { EventDetails } from '../features/events/EventDetails';
+import { useT } from '../platform/i18n';
 
 interface Props {
   email: string;
@@ -17,35 +18,34 @@ interface Props {
 }
 
 export function AssignedEventsScreen({ email, events, loading, error, message, onRefresh, onSelect, onSignOut }: Props) {
+  const t = useT();
   const forbidden = error instanceof ApiError && error.status === 403;
   const visibleEvents = forbidden ? null : events;
   return (
     <Screen topAligned refreshing={loading && events !== null} onRefresh={onRefresh}>
-      <Text accessibilityRole="header" style={textStyles.title}>Assigned events</Text>
+      <Text accessibilityRole="header" style={textStyles.title}>{t('Assigned events')}</Text>
       <Text style={styles.email}>{email}</Text>
-      <Text style={styles.help}>Choose the event you are working at.</Text>
-      {message && <Notice>{message}</Notice>}
+      <Text style={styles.help}>{t('Choose the event you are working at.')}</Text>
+      {message && <Notice>{t(message)}</Notice>}
       {loading && !visibleEvents && <View style={styles.loading}>
         <ActivityIndicator color={colors.primary} />
-        <Text accessibilityLiveRegion="polite" style={styles.help}>Loading assigned events…</Text>
+        <Text accessibilityLiveRegion="polite" style={styles.help}>{t('Loading assigned events…')}</Text>
       </View>}
       {error != null && <>
-        <Notice>{forbidden ? 'Assigned events are not accessible. Contact your event administrator or try again.' : errorMessage(error)}</Notice>
-        {visibleEvents && <Text style={styles.help}>Showing the last loaded events. Pull down or retry to update.</Text>}
-        <Button label="Try again" loading={loading} onPress={onRefresh} />
+        <Notice>{t(forbidden ? 'Assigned events are not accessible. Contact your event administrator or try again.' : errorMessage(error))}</Notice>
+        {visibleEvents && <Text style={styles.help}>{t('Showing the last loaded events. Pull down or retry to update.')}</Text>}
+        <Button label={t('Try again')} loading={loading} onPress={onRefresh} />
       </>}
-      {visibleEvents?.data.length === 0 && <Text accessibilityLiveRegion="polite" style={textStyles.body}>
-        No assigned events are currently available.
-      </Text>}
+      {visibleEvents?.data.length === 0 && <Text accessibilityLiveRegion="polite" style={textStyles.body}>{t('No assigned events are currently available.')}</Text>}
       {visibleEvents?.data.map((event) => <Pressable key={event.id}
-        accessibilityRole="button" accessibilityLabel={`Open ${event.title}`}
-        accessibilityHint="View attendance for this event" onPress={() => onSelect(event)}
+        accessibilityRole="button" accessibilityLabel={t('Open {title}', { title: event.title })}
+        accessibilityHint={t('View attendance for this event')} onPress={() => onSelect(event)}
         style={({ pressed }) => [styles.event, pressed && styles.pressed]}>
         <EventDetails event={event} />
-        <Text style={styles.open}>View attendance →</Text>
+        <Text style={styles.open}>{t('View attendance →')}</Text>
       </Pressable>)}
-      <Button label="Refresh events" secondary loading={loading} onPress={onRefresh} />
-      <Button label="Sign out" secondary onPress={onSignOut} />
+      <Button label={t('Refresh events')} secondary loading={loading} onPress={onRefresh} />
+      <Button label={t('Sign out')} secondary onPress={onSignOut} />
     </Screen>
   );
 }

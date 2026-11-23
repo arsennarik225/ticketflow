@@ -4,8 +4,10 @@ import { errorMessage } from '../api/errors';
 import { useAuth } from '../auth/AuthProvider';
 import { Button } from '../components/Button';
 import { colors, Notice, Screen, textStyles } from '../components/Screen';
+import { useT } from '../platform/i18n';
 
 export function SignInScreen() {
+  const t = useT();
   const { session, state } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -29,25 +31,25 @@ export function SignInScreen() {
   const message = error ?? (state.status === 'signedOut' ? state.message : undefined);
   return (
     <Screen>
-      <Text accessibilityRole="header" style={textStyles.title}>Staff sign in</Text>
-      <Text style={textStyles.body}>Sign in with the account assigned to your event.</Text>
-      <Text style={styles.label}>Email</Text>
+      <Text accessibilityRole="header" style={textStyles.title}>{t('Staff sign in')}</Text>
+      <Text style={textStyles.body}>{t('Sign in with the account assigned to your event.')}</Text>
+      <Text style={styles.label}>{t('Email')}</Text>
       <TextInput
-        accessibilityLabel="Email" style={styles.input} value={email} onChangeText={setEmail}
+        accessibilityLabel={t('Email')} style={styles.input} value={email} onChangeText={setEmail}
         autoCapitalize="none" autoCorrect={false} keyboardType="email-address" autoComplete="email"
         textContentType="username" returnKeyType="next" editable={!submitting}
         onSubmitEditing={() => passwordInput.current?.focus()}
         placeholder="you@example.com" placeholderTextColor={colors.muted}
       />
-      <Text style={styles.label}>Password</Text>
+      <Text style={styles.label}>{t('Password')}</Text>
       <TextInput
-        ref={passwordInput} accessibilityLabel="Password" style={styles.input} value={password}
+        ref={passwordInput} accessibilityLabel={t('Password')} style={styles.input} value={password}
         onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false}
         autoComplete="current-password" textContentType="password" returnKeyType="go"
         editable={!submitting} onSubmitEditing={() => { void submit(); }}
       />
-      {message && <Notice>{message}</Notice>}
-      <Button label={submitting ? 'Signing in…' : 'Sign in'} loading={submitting}
+      {message && <Notice>{t(message)}</Notice>}
+      <Button label={t(submitting ? 'Signing in…' : 'Sign in')} loading={submitting}
         disabled={!email.trim() || !password} onPress={() => { void submit(); }} />
     </Screen>
   );

@@ -8,6 +8,7 @@ import { EventDetails } from '../features/events/EventDetails';
 import { useRemoteResource } from '../features/events/useRemoteResource';
 import { TicketScanner } from '../features/scanning/TicketScanner';
 import { AttendeeSearch } from '../features/search/AttendeeSearch';
+import { useT } from '../platform/i18n';
 
 interface Props {
   event: AssignedEvent;
@@ -21,6 +22,7 @@ interface Props {
 
 export function EventDashboardScreen({ event, loadAttendance, assignmentError, onRefreshAssignments,
   onAccessLost, onBack, onSignOut }: Props) {
+  const t = useT();
   // This keyed screen owns the selected event's totals and canReverseCheckIn capability together.
   // The capability never authorizes a mutation.
   const attendance = useRemoteResource(loadAttendance);
@@ -40,7 +42,7 @@ export function EventDashboardScreen({ event, loadAttendance, assignmentError, o
   const percentage = totals && totals.registered > 0 ? Math.round(totals.checkedIn / totals.registered * 100) : 0;
   return (
     <Screen topAligned refreshing={attendance.loading && totals !== null} onRefresh={operating ? undefined : refresh}>
-      <Button label={operating ? 'Back to event' : 'Back to events'} secondary onPress={operating ? closeTool : onBack} />
+      <Button label={t(operating ? 'Back to event' : 'Back to events')} secondary onPress={operating ? closeTool : onBack} />
       <View style={[styles.context, operating && styles.scannerContext]}>
         {operating ? <>
           <Text accessibilityRole="header" style={styles.eventTitle}>{event.title}</Text>
@@ -51,46 +53,46 @@ export function EventDashboardScreen({ event, loadAttendance, assignmentError, o
         onAccessLost={onAccessLost} onBack={closeTool} />}
       {mode === 'search' && !accessLost && <AttendeeSearch eventId={event.id} timeZone={event.timeZone}
         onReconcileTotals={admissionConfirmed} onAccessLost={onAccessLost} onBack={closeTool} />}
-      <Text accessibilityRole="header" style={textStyles.title}>Attendance</Text>
-      {assignmentError != null && <Notice>{`Event assignment could not be refreshed. ${errorMessage(assignmentError)}`}</Notice>}
+      <Text accessibilityRole="header" style={textStyles.title}>{t('Attendance')}</Text>
+      {assignmentError != null && <Notice>{`${t('Event assignment could not be refreshed.')} ${t(errorMessage(assignmentError))}`}</Notice>}
       {(attendance.loading && !totals || accessLost) && <View style={styles.loading}>
         <ActivityIndicator color={colors.primary} />
-        <Text accessibilityLiveRegion="polite" style={textStyles.body}>Loading attendance…</Text>
+        <Text accessibilityLiveRegion="polite" style={textStyles.body}>{t('Loading attendance…')}</Text>
       </View>}
       {attendance.error != null && !accessLost && <>
-        <Notice>{errorMessage(attendance.error)}</Notice>
-        <Button label="Try again" loading={attendance.loading} onPress={refresh} />
+        <Notice>{t(errorMessage(attendance.error))}</Notice>
+        <Button label={t('Try again')} loading={attendance.loading} onPress={refresh} />
       </>}
       {totals && <>
         <View style={styles.metrics}>
           <View style={styles.metric}>
-            <Text style={styles.label}>Registered</Text>
+            <Text style={styles.label}>{t('Registered')}</Text>
             <Text style={styles.number}>{totals.registered}</Text>
           </View>
           <View style={styles.metric}>
-            <Text style={styles.label}>Checked in</Text>
+            <Text style={styles.label}>{t('Checked in')}</Text>
             <Text style={styles.number}>{totals.checkedIn}</Text>
           </View>
         </View>
-        <View accessibilityRole="progressbar" accessibilityLabel="Attendance progress"
-          accessibilityValue={{ min: 0, max: 100, now: percentage, text: `${percentage}% checked in` }}>
-          <Text style={styles.progressLabel}>{percentage}% checked in</Text>
+        <View accessibilityRole="progressbar" accessibilityLabel={t('Attendance progress')}
+          accessibilityValue={{ min: 0, max: 100, now: percentage, text: t('{percent}% checked in', { percent: percentage }) }}>
+          <Text style={styles.progressLabel}>{t('{percent}% checked in', { percent: percentage })}</Text>
           <View style={styles.track}><View style={[styles.progress, { width: `${percentage}%` }]} /></View>
         </View>
-        {totals.registered === 0 && <Text style={styles.help}>No registrations yet.</Text>}
-        {attendance.error != null && <Text style={styles.help}>Showing the last loaded totals. Refresh to get current attendance.</Text>}
-        {attendance.loading && <Text accessibilityLiveRegion="polite" style={styles.help}>Updating attendance…</Text>}
+        {totals.registered === 0 && <Text style={styles.help}>{t('No registrations yet.')}</Text>}
+        {attendance.error != null && <Text style={styles.help}>{t('Showing the last loaded totals. Refresh to get current attendance.')}</Text>}
+        {attendance.loading && <Text accessibilityLiveRegion="polite" style={styles.help}>{t('Updating attendance…')}</Text>}
       </>}
-      <Button label="Refresh totals" loading={attendance.loading} onPress={refresh} />
-      {!operating && !accessLost && <><Button label="Scan ticket QR" onPress={() => {
+      <Button label={t('Refresh totals')} loading={attendance.loading} onPress={refresh} />
+      {!operating && !accessLost && <><Button label={t('Scan ticket QR')} onPress={() => {
         setMode('scan');
         onRefreshAssignments();
       }} />
-      <Button label="Search attendee / ticket" secondary onPress={() => {
+      <Button label={t('Search attendee / ticket')} secondary onPress={() => {
         setMode('search');
         onRefreshAssignments();
       }} /></>}
-      <Button label="Sign out" secondary onPress={onSignOut} />
+      <Button label={t('Sign out')} secondary onPress={onSignOut} />
     </Screen>
   );
 }
