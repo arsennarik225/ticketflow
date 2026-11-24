@@ -56,9 +56,9 @@ export function localDate(value?: string) {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }
 const optionalDate = (data: FormValues, name: string) =>
-  text(data, name) ? new Date(text(data, name)).toISOString() : undefined;
+  text(data, name) ? new Date(text(data, name)).toISOString() : null;
 const optionalNumber = (data: FormValues, name: string) =>
-  text(data, name) === '' ? undefined : number(data, name);
+  text(data, name) === '' ? null : number(data, name);
 export function tiyin(value: string) {
   if (!/^\d+(\.\d{1,2})?$/.test(value)) throw new Error('Invalid KZT amount');
   const [whole, fraction = ''] = value.split('.');
@@ -130,7 +130,7 @@ export function EventEditor({ event, onSave }: { event?: Event; onSave: (result:
             endsAt: optionalDate(data, 'endsAt'),
             registrationOpensAt: optionalDate(data, 'registrationOpensAt'),
             registrationClosesAt: optionalDate(data, 'registrationClosesAt'),
-            imageUrl: text(data, 'imageUrl') || undefined,
+            imageUrl: text(data, 'imageUrl') || null,
           };
           onSave(
             await send<Event>(
@@ -443,7 +443,7 @@ function TicketTypes({ event, onChange }: { event: Event; onChange: () => void }
                 maxPerOrder: optionalNumber(data, 'maxPerOrder'),
                 salesStartAt: optionalDate(data, 'salesStartAt'),
                 salesEndAt: optionalDate(data, 'salesEndAt'),
-                seatCategory: text(data, 'seatCategory') || undefined,
+                seatCategory: text(data, 'seatCategory') || null,
                 hidden: data.has('hidden'),
               },
               editing ? 'PATCH' : 'POST',
@@ -570,7 +570,8 @@ function Campaigns({ event }: { event: Event }) {
                   {campaign.campaignUrl}
                 </ExternalLink>
                 <Paragraph>
-                  {t('Redemptions')}: {campaign.redemptions} · {t('Sold')}: {campaign.ticketsSold}
+                  {t('Redemptions')}: {campaign.redemptions} · {t('Orders')}: {campaign.orders} ·{' '}
+                  {t('Sold')}: {campaign.ticketsSold}
                 </Paragraph>
                 <Paragraph>
                   {t('Gross sales')}: {money(campaign.grossRevenue)} · {t('Discount')}:{' '}
@@ -897,6 +898,16 @@ function Analytics({ event }: { event: Event }) {
   return (
     <>
       <DateFilters ticketTypes={event.ticketTypes} onChange={setFilters} />
+      <Paragraph>
+        {t(
+          'Inventory and attendance show current totals. Sales and revenue use the selected order dates.',
+        )}
+      </Paragraph>
+      {filters.ticketTypeId && (
+        <Paragraph>
+          {t('Ticket-type discounts, fees and refunds are allocated by original ticket value.')}
+        </Paragraph>
+      )}
       <Paragraph variant="notice">{t('Payment simulation — no real money is charged.')}</Paragraph>
       <Resource value={resource}>
         {(data) => (
@@ -993,11 +1004,12 @@ function History({ eventId }: { eventId: string }) {
         {(data) => (
           <>
             <Table
-              headers={['Date', 'Actor', 'Action', 'Description']}
+              headers={['Date', 'Actor', 'Action', 'Affected entity', 'Description']}
               rows={data.data.map((item) => [
                 date(item.createdAt),
                 item.actorName,
                 item.action,
+                `${item.entityType}${item.entityId ? ` · ${item.entityId}` : ''}`,
                 item.description,
               ])}
             />

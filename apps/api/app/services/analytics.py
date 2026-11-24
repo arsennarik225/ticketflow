@@ -8,13 +8,16 @@ Money definitions (all in tiyin, for orders created in the date range):
   netRevenue      ticket revenue kept: gross - discounts - value of refunded orders
   fees            processing fees the organizer pays (0 when attendees pay them)
   estimatedPayout netRevenue - fees
-Order-level amounts cannot be split by ticket type, so they are left out when a
-ticketTypeId filter is used.
+For ticket-type reporting, recorded order-level discounts, refunds, and fees are
+allocated by saved line value with deterministic largest-remainder rounding in tiyin.
+This is a reporting allocation, not a recalculation using today's prices or promo rules.
+Inventory and attendance remain current totals; money and timeline use order dates.
 """
+from collections import defaultdict
 from datetime import datetime
 
 from sqlalchemy import case, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.errors import not_found
 from app.models import Campaign, Event, Order, OrderItem, PromoRedemption, Refund, Ticket, utcnow
@@ -94,7 +97,67 @@ def event_analytics(db: Session, event: Event, start: datetime | None, end: date
         net = gross - discounts - refunded_value
         result.discounts, result.refunds, result.fees = money(discounts), money(refunds), money(fees)
         result.net_revenue, result.estimated_payout = money(net), money(net - fees)
+    else:
+        filtered_money, campaign_money, campaign_tickets = ticket_type_financials(
+            db, orders_in_range, ticket_type_id)
+        for key, amount in filtered_money.items():
+            setattr(result, key, money(amount))
+        for campaign in result.campaigns:
+            values = campaign_money.get(campaign.campaign_id, {})
+            campaign.redemptions = values.get("redemptions", 0)
+            campaign.tickets_sold = campaign_tickets.get(campaign.campaign_id, 0)
+            campaign.gross_sales = money(values.get("gross", 0))
+            campaign.discounts = money(values.get("discount", 0))
+            campaign.net_revenue = money(values.get("net", 0))
     return result
+
+
+def allocate(amount: int, weights: dict[str, int]) -> dict[str, int]:
+    """Allocate an integer total exactly; tied remainders use stable ticket-type IDs."""
+    total = sum(weights.values())
+    if not total:
+        return dict.fromkeys(weights, 0)
+    shares = {key: amount * weight // total for key, weight in weights.items()}
+    remainder = amount - sum(shares.values())
+    ranking = sorted(weights, key=lambda key: (-(amount * weights[key] % total), key))
+    for key in ranking[:remainder]:
+        shares[key] += 1
+    return shares
+
+
+def ticket_type_financials(db: Session, orders_in_range, ticket_type_id: str):
+    """Scope campaign and money reporting to selected saved order lines."""
+    orders = db.scalars(select(Order).where(*orders_in_range,
+        Order.items.any(OrderItem.ticket_type_id == ticket_type_id))
+        .options(selectinload(Order.items), selectinload(Order.refund), selectinload(Order.redemption)))
+    totals = dict.fromkeys(("discounts", "refunds", "fees", "net_revenue", "estimated_payout"), 0)
+    campaigns = defaultdict(lambda: defaultdict(int))
+    for order in orders:
+        weights = defaultdict(int)
+        for item in order.items:
+            weights[str(item.ticket_type_id)] += item.quantity * item.unit_price
+        if ticket_type_id not in weights:
+            continue
+        gross = weights[ticket_type_id]
+        discount = allocate(order.discount, weights)[ticket_type_id]
+        refund = allocate(order.refund.amount if order.refund else 0, weights)[ticket_type_id]
+        fee = allocate(order.processing_fee if order.status == "confirmed"
+            and order.processing_fee_paid_by == "organizer" else 0, weights)[ticket_type_id]
+        net = gross - discount if order.status == "confirmed" else 0
+        totals["discounts"] += discount
+        totals["refunds"] += refund
+        totals["fees"] += fee
+        totals["net_revenue"] += net
+        totals["estimated_payout"] += net - fee
+        if order.redemption:
+            entry = campaigns[str(order.redemption.campaign_id)]
+            for key, value in (("redemptions", 1), ("gross", gross), ("discount", discount), ("net", net)):
+                entry[key] += value
+    tickets = dict(db.execute(select(PromoRedemption.campaign_id, func.count(Ticket.id))
+        .join(Order, Order.id == PromoRedemption.order_id).join(Ticket, Ticket.order_id == Order.id)
+        .where(*orders_in_range, Ticket.ticket_type_id == ticket_type_id,
+               Ticket.status.in_(("valid", "checked_in"))).group_by(PromoRedemption.campaign_id)).all())
+    return totals, campaigns, {str(key): count for key, count in tickets.items()}
 
 
 def campaign_sales(db: Session, event: Event, orders_in_range) -> list[CampaignSales]:

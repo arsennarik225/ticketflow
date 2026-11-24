@@ -7,7 +7,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, Response
 from pydantic import AwareDatetime
-from sqlalchemy import or_, select, update
+from sqlalchemy import String, cast, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
@@ -155,9 +155,15 @@ def search_orders(admin: Admin, q: str | None = None, paging: Paging = Depends()
 @router.get("/payments", response_model=ListOf[PaymentOut])
 def list_payments(admin: Admin, status: Annotated[str | None, Query(pattern="^(succeeded|failed|refunded)$")] = None,
                   purpose: Annotated[str | None, Query(pattern="^(ticket_order|activation_fee)$")] = None,
-                  paging: Paging = Depends(), db: Session = Depends(get_db)):
+                  q: str | None = None, paging: Paging = Depends(), db: Session = Depends(get_db)):
     """Monitor payment failures and refunds (§4.12). All payments are simulated."""
     query = select(Payment)
+    if q:
+        match = contains(q.strip())
+        query = query.join(Event, Event.id == Payment.event_id).outerjoin(Order, Order.id == Payment.order_id)
+        query = query.where(or_(cast(Payment.id, String).ilike(match), Order.order_number.ilike(match),
+                                Order.buyer_email.ilike(match), Event.title.ilike(match),
+                                Payment.failure_code.ilike(match)))
     if status:
         query = query.where(Payment.status == status)
     if purpose:

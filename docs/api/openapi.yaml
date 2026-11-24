@@ -400,8 +400,9 @@ paths:
         promo code is applied automatically after server-side validation (SRS §4.14). A
         valid token comes back as `appliedPromo`; an expired, disabled, or used-up one as
         `promoError` with a clear message. A private event is only visible with a
-        campaign token for that event (the organizer's invite link).
-      security: []
+        campaign token for that event (the organizer's invite link), or to an authenticated
+        buyer or verified ticket holder. Draft and suspended events remain hidden.
+      security: [{}, { bearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/EventId'
         - { name: campaignToken, in: query, schema: { type: string } }
@@ -422,7 +423,8 @@ paths:
         The UID is the event id, so a newer download replaces the old calendar entry. A
         cancelled event downloads as a cancellation. Same visibility rules as the event page.
         Google / Outlook "add to calendar" links can be built in the web app from the event.
-      security: []
+        Private-event buyers and verified ticket holders may authenticate without an invitation token.
+      security: [{}, { bearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/EventId'
         - { name: campaignToken, in: query, schema: { type: string } }
@@ -1070,6 +1072,29 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Order' }
         '404': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+
+  /me/tickets:
+    get:
+      tags: [My Orders]
+      summary: List tickets bought by me or issued to my verified email (SRS §4.7)
+      description: Attendee access returns only their tickets, not the buyer's other tickets or order details.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Tickets
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, total]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Ticket' }
+                  total: { type: integer }
         default: { $ref: '#/components/responses/Error' }
 
   /me/tickets/{ticketId}:
@@ -1927,6 +1952,7 @@ paths:
       tags: [Admin]
       summary: Monitor payments, failures, and refunds (SRS §4.12)
       parameters:
+        - { name: q, in: query, description: "Search payment ID, order number, buyer email, event title or failure code.", schema: { type: string } }
         - { name: status, in: query, schema: { type: string, enum: [succeeded, failed, refunded] } }
         - { name: purpose, in: query, schema: { type: string, enum: [ticket_order, activation_fee] } }
         - $ref: '#/components/parameters/Page'
@@ -2601,6 +2627,10 @@ components:
         Money is for orders created in the range. grossSales = face value before discounts;
         netRevenue = gross - discounts - value of refunded orders; fees = processing fees the
         organizer pays; estimatedPayout = netRevenue - fees.
+        With ticketTypeId, money and campaign totals use the selected saved order lines.
+        Order-level discounts, refunds and fees are allocated by saved line value using
+        deterministic largest-remainder rounding in tiyin; allocations sum to event totals.
+        Inventory and attendance are current totals, independent of the order date range.
       required: [eventId, capacity, ticketsSold, ticketsRemaining, percentSold, grossSales,
                  salesOverTime, byTicketType, campaigns, attendance]
       properties:

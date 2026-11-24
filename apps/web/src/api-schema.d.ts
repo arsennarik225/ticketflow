@@ -675,7 +675,8 @@ export interface paths {
          *     promo code is applied automatically after server-side validation (SRS §4.14). A
          *     valid token comes back as `appliedPromo`; an expired, disabled, or used-up one as
          *     `promoError` with a clear message. A private event is only visible with a
-         *     campaign token for that event (the organizer's invite link).
+         *     campaign token for that event (the organizer's invite link), or to an authenticated
+         *     buyer or verified ticket holder. Draft and suspended events remain hidden.
          */
         get: {
             parameters: {
@@ -723,6 +724,7 @@ export interface paths {
          * @description The UID is the event id, so a newer download replaces the old calendar entry. A
          *     cancelled event downloads as a cancellation. Same visibility rules as the event page.
          *     Google / Outlook "add to calendar" links can be built in the web app from the event.
+         *     Private-event buyers and verified ticket holders may authenticate without an invitation token.
          */
         get: {
             parameters: {
@@ -2068,6 +2070,52 @@ export interface paths {
                     };
                 };
                 404: components["responses"]["Error"];
+                default: components["responses"]["Error"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List tickets bought by me or issued to my verified email (SRS §4.7)
+         * @description Attendee access returns only their tickets, not the buyer's other tickets or order details.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    page?: components["parameters"]["Page"];
+                    pageSize?: components["parameters"]["PageSize"];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Tickets */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["Ticket"][];
+                            total: number;
+                        };
+                    };
+                };
                 default: components["responses"]["Error"];
             };
         };
@@ -3785,6 +3833,8 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
+                    /** @description Search payment ID, order number, buyer email, event title or failure code. */
+                    q?: string;
                     status?: "succeeded" | "failed" | "refunded";
                     purpose?: "ticket_order" | "activation_fee";
                     page?: components["parameters"]["Page"];
@@ -4407,6 +4457,10 @@ export interface components {
          * @description Money is for orders created in the range. grossSales = face value before discounts;
          *     netRevenue = gross - discounts - value of refunded orders; fees = processing fees the
          *     organizer pays; estimatedPayout = netRevenue - fees.
+         *     With ticketTypeId, money and campaign totals use the selected saved order lines.
+         *     Order-level discounts, refunds and fees are allocated by saved line value using
+         *     deterministic largest-remainder rounding in tiyin; allocations sum to event totals.
+         *     Inventory and attendance are current totals, independent of the order date range.
          */
         EventAnalytics: {
             eventId: string;

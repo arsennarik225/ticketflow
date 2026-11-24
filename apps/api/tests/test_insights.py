@@ -38,7 +38,11 @@ def test_analytics_match_the_records(api):
 
     vip_only = api.get(f"/v1/organizer/events/{show['id']}/analytics", token=token,
                        params={"ticketTypeId": vip["id"]}).json()
-    assert (vip_only["capacity"], vip_only["ticketsSold"]) == (5, 1) and "discounts" not in vip_only
+    assert (vip_only["capacity"], vip_only["ticketsSold"]) == (5, 1)
+    assert vip_only["discounts"]["amount"] == 0
+    assert vip_only["netRevenue"]["amount"] == 1500000
+    assert vip_only["campaigns"][0]["ticketsSold"] == 0
+    assert vip_only["campaigns"][0]["redemptions"] == 0
     future = api.get(f"/v1/organizer/events/{show['id']}/analytics", token=token,
                      params={"from": in_days(1)}).json()
     assert future["grossSales"]["amount"] == 0 and future["salesOverTime"] == []

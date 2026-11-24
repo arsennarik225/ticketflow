@@ -29,7 +29,7 @@ export function AdminPage() {
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
   const [inspect, setInspect] = useState<string | null>(null);
-  const path = `/admin/${tab}${query({ q: ['users', 'events', 'orders'].includes(tab) ? q : undefined, page, status: tab === 'payments' ? status : undefined })}`;
+  const path = `/admin/${tab}${query({ q: ['users', 'events', 'orders', 'payments'].includes(tab) ? q : undefined, page, status: tab === 'payments' ? status : undefined })}`;
   const users = useResource<Page<Model<'AdminUser'>>>(tab === 'users' ? path : null);
   const events = useResource<Page<Event>>(tab === 'events' ? path : null);
   const orders = useResource<Page<Model<'Order'>>>(tab === 'orders' ? path : null);
@@ -74,7 +74,7 @@ export function AdminPage() {
           </NativeButton>
         ))}
       </Section>
-      {['users', 'events', 'orders'].includes(tab) && (
+      {['users', 'events', 'orders', 'payments'].includes(tab) && (
         <FormContainer
           variant="toolbar"
           key={tab}
