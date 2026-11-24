@@ -4,6 +4,19 @@ import { createContext, useContext } from 'react';
 export type Language = 'kk' | 'ru' | 'en';
 export const LanguageContext = createContext<Language>('ru');
 const rows = [
+  [
+    'Ticket-type discounts, fees and refunds are allocated by original ticket value.',
+    'Скидки, комиссии и возвраты по типу билета распределяются пропорционально исходной стоимости билетов.',
+    'Билет түрі бойынша жеңілдіктер, комиссиялар және қайтарымдар бастапқы билет құнына пропорционал бөлінеді.',
+  ],
+  ['Affected entity', 'Связанная запись', 'Қатысты жазба'],
+  ['Not connected', 'Не подключён', 'Қосылмаған'],
+  ['connected', 'Подключён', 'Қосылған'],
+  [
+    'Inventory and attendance show current totals. Sales and revenue use the selected order dates.',
+    'Запасы билетов и посещаемость показывают текущие итоги. Продажи и выручка учитывают выбранные даты заказов.',
+    'Билет қоры мен қатысу ағымдағы қорытындыларды көрсетеді. Сатылым мен түсім таңдалған тапсырыс күндері бойынша есептеледі.',
+  ],
   ['Menu', 'Меню', 'Мәзір'],
   ['Check in', 'Отметить вход', 'Кіруді тіркеу'],
   ['Email link or token', 'Ссылка или код из письма', 'Хаттағы сілтеме немесе код'],

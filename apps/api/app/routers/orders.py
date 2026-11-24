@@ -63,6 +63,19 @@ def my_order(order_id: OrderId, user: User = Depends(current_user), db: Session 
     return order_out(order)
 
 
+@router.get("/me/tickets", response_model=ListOf[TicketOut], tags=["My Orders"])
+def my_tickets(paging: Paging = Depends(), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Buyer tickets plus tickets issued to this verified attendee; never expose other order tickets."""
+    access = mine(user)
+    if user.email_verified:
+        access = or_(access, Ticket.attendee_email == user.email)
+    query = (select(Ticket).join(Order, Order.id == Ticket.order_id).where(access)
+             .options(selectinload(Ticket.event), selectinload(Ticket.ticket_type), selectinload(Ticket.seat))
+             .order_by(Ticket.created_at.desc(), Ticket.id.desc()))
+    rows, total = paging.fetch(db, query)
+    return ListOf(data=[ticket_out(t) for t in rows], total=total)
+
+
 @router.get("/me/tickets/{ticketId}", response_model=TicketOut, tags=["My Orders"])
 def my_ticket_detail(ticket_id: TicketId, user: User = Depends(current_user), db: Session = Depends(get_db)):
     return ticket_out(my_ticket(db, ticket_id, user))

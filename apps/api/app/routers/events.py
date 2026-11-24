@@ -6,10 +6,10 @@ from sqlalchemy import exists, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
-from app.deps import ApiRoute, Paging, contains, current_user, organizer
+from app.deps import ApiRoute, Paging, contains, current_user, optional_user, organizer
 from app.errors import conflict, invalid, not_found
 from app.formatting import kzt
-from app.models import Event, EventReport, Order, Payment, TicketType, User, utcnow
+from app.models import Event, EventReport, Order, Payment, Ticket, TicketType, User, utcnow
 from app.schemas import (
     ActivationOut, ErrorDetail, EventIn, EventOut, EventPatchIn, EventReportOut, EventStatus, ListOf,
     PaymentOut, ReasonIn, TermsIn,
@@ -50,11 +50,19 @@ def browse_events(q: str | None = None, city: str | None = None, paging: Paging 
     return ListOf(data=events_out(db, rows, organizer_view=False), total=total)
 
 
-def visible_event(db: Session, event_id: str, campaign_token: str | None):
+def visible_event(db: Session, event_id: str, campaign_token: str | None, user: User | None = None):
     event = get_event(db, event_id)
     campaign = campaign_by_token(db, event, campaign_token)
     if not publicly_visible(event, campaign):
-        raise not_found("Event")
+        holder = False
+        if user and event.visibility == "private" and event.status != "draft" and not event.suspended_at:
+            access = Order.user_id == user.id
+            if user.email_verified:
+                access = or_(access, Order.buyer_email == user.email, Ticket.attendee_email == user.email)
+            holder = db.scalar(select(exists().where(Ticket.event_id == event.id,
+                Ticket.order_id == Order.id, access)))
+        if not holder:
+            raise not_found("Event")
     return event, campaign
 
 
@@ -70,10 +78,11 @@ def promo_link_problem(db: Session, campaign) -> tuple[str, str] | None:
 
 
 @router.get("/events/{eventId}", response_model=EventOut)
-def get_public_event(event_id: EventId, campaign_token: CampaignToken = None, db: Session = Depends(get_db)):
+def get_public_event(event_id: EventId, campaign_token: CampaignToken = None,
+                     user: User | None = Depends(optional_user), db: Session = Depends(get_db)):
     """With a campaignToken from a Campaign QR link, the promo is validated on the server
     and shown as appliedPromo, or explained in promoError."""
-    event, campaign = visible_event(db, event_id, campaign_token)
+    event, campaign = visible_event(db, event_id, campaign_token, user)
     promo, error = None, None
     if campaign_token:
         if problem := promo_link_problem(db, campaign):
@@ -85,8 +94,9 @@ def get_public_event(event_id: EventId, campaign_token: CampaignToken = None, db
 
 
 @router.get("/events/{eventId}/calendar.ics")
-def event_calendar(event_id: EventId, campaign_token: CampaignToken = None, db: Session = Depends(get_db)):
-    event, _ = visible_event(db, event_id, campaign_token)
+def event_calendar(event_id: EventId, campaign_token: CampaignToken = None,
+                   user: User | None = Depends(optional_user), db: Session = Depends(get_db)):
+    event, _ = visible_event(db, event_id, campaign_token, user)
     return Response(event_ics(event), media_type="text/calendar; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="event-{event.id}.ics"'})
 

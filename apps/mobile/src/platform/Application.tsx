@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/AuthProvider';
 import { ScannerNavigator } from '../navigation/ScannerNavigator';
 import { colors } from '../components/Screen';
+import { Button } from '../components/Button';
 import { AccountPage, AuthContext, AuthPage, RequireAuth } from './auth';
 import { AdminPage } from './admin';
 import {
@@ -158,9 +159,7 @@ function Shell({
               }}
               style={({ pressed }) => [styles.languageButton, pressed && styles.pressed]}
             >
-              <Text style={styles.languageCode}>
-                {language === 'kk' ? 'KZ' : language.toUpperCase()}
-              </Text>
+              <Text style={styles.languageCode}>{language.toUpperCase()}</Text>
               <Text style={styles.chevron}>{languageOpen ? '▴' : '▾'}</Text>
             </Pressable>
             <NativeButton
@@ -218,13 +217,13 @@ function Shell({
                   </NativeButton>
                 ))}
                 {user && (
-                  <NativeButton
+                  <Button
+                    label={t('Sign out')}
+                    secondary
                     onPress={() => {
                       void session.signOut();
                     }}
-                  >
-                    {t('Sign out')}
-                  </NativeButton>
+                  />
                 )}
               </View>
             </ScrollView>

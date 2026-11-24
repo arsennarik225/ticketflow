@@ -1,5 +1,7 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { Linking, Platform } from 'react-native';
+import { Linking, Platform, StyleSheet } from 'react-native';
+import { Calendar, SeatPicker } from '../platform/events';
+import type { Model } from '../platform/api';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from '../auth/AuthProvider';
 import { RootNavigator } from '../navigation/RootNavigator';
@@ -70,7 +72,7 @@ test('guest browsing and native email/password login admit attendees into the fu
   expect(screen.queryByRole('button', { name: 'Admin' })).toBeNull();
   await fireEvent.press(screen.getByRole('button', { name: 'My tickets' }));
   await screen.findByText('No results');
-  expect(h.fetcher.mock.calls.some(([url]) => String(url).includes('/me/orders'))).toBe(true);
+  expect(h.fetcher.mock.calls.some(([url]) => String(url).includes('/me/tickets'))).toBe(true);
 });
 
 test.each(
@@ -266,7 +268,8 @@ test('verified staff open the existing native scanner area through the new appli
 
 test('the existing language selector translates the scanner area without reloading assignments', async () => {
   const h = harness(tokenResponse);
-  h.fetcher.mockResolvedValueOnce(response(user))
+  h.fetcher
+    .mockResolvedValueOnce(response(user))
     .mockImplementation(async () => response({ data: [], total: 0 }));
   const screen = await show(h);
   await screen.findByText('Find your next event');
@@ -283,6 +286,7 @@ test('the existing language selector translates the scanner area without reloadi
   expect(screen.getByText('Тағайындалған іс-шаралар')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Іс-шараларды жаңарту' })).toBeEnabled();
   expect(preferences.getItem('biletflow.language')).toBe('kk');
+  expect(screen.getByText('KK')).toBeTruthy();
   expect(h.fetcher).toHaveBeenCalledTimes(requests);
 });
 
@@ -498,4 +502,246 @@ test('accepting the displayed iPhone date and time fills a previously empty requ
   } finally {
     platform.restore();
   }
+});
+
+test('My tickets discovers an attendee ticket independently of the buyer order list', async () => {
+  jest.spyOn(Linking, 'getInitialURL').mockResolvedValue('biletflow://tickets');
+  const h = harness(tokenResponse);
+  const ticket = {
+    id: 'ticket-for-me',
+    orderId: 'someone-elses-order',
+    ticketNumber: 'TKT-BOB',
+    eventTitle: 'Gifted concert',
+    ticketTypeName: 'General',
+    attendee: { fullName: 'Bob' },
+    status: 'valid',
+  };
+  h.fetcher.mockImplementation(async (url) =>
+    response(
+      String(url).endsWith('/me')
+        ? { ...user, roles: ['attendee'] }
+        : String(url).endsWith('/me/tickets/ticket-for-me')
+          ? ticket
+          : { data: [ticket], total: 1 },
+    ),
+  );
+  const screen = await show(h);
+  await screen.findByText('Gifted concert');
+  expect(h.fetcher.mock.calls.some(([url]) => String(url).includes('/me/tickets?page=1'))).toBe(
+    true,
+  );
+  expect(h.fetcher.mock.calls.some(([url]) => String(url).includes('/me/orders'))).toBe(false);
+  await fireEvent.press(screen.getByRole('button', { name: 'Show QR' }));
+  expect(
+    h.fetcher.mock.calls.some(([url]) => String(url).endsWith('/me/tickets/ticket-for-me')),
+  ).toBe(true);
+});
+
+test('account displays the masked payout account and connection status', async () => {
+  jest.spyOn(Linking, 'getInitialURL').mockResolvedValue('biletflow://account');
+  const h = harness(tokenResponse);
+  h.fetcher.mockImplementation(async (url) =>
+    response(
+      String(url).endsWith('/me')
+        ? { ...user, roles: ['attendee', 'organizer'] }
+        : String(url).endsWith('/organizer-profile')
+          ? {
+              displayName: 'Events',
+              contactEmail: user.email,
+              payoutAccount: { maskedAccount: '•••• 1234', status: 'connected' },
+            }
+          : { data: [], total: 0 },
+    ),
+  );
+  const screen = await show(h);
+  await screen.findByText('•••• 1234');
+  expect(screen.getByText('Status: connected')).toBeTruthy();
+});
+
+test('clearing optional event values sends explicit nulls to remove saved configuration', async () => {
+  jest.spyOn(Linking, 'getInitialURL').mockResolvedValue('biletflow://organizer/events/event-1');
+  const h = harness(tokenResponse);
+  const event = {
+    ...showEvent,
+    organizerId: user.id,
+    capacity: 100,
+    imageUrl: 'https://example.test/image.png',
+    registrationOpensAt: '2026-12-01T12:00:00Z',
+    registrationClosesAt: '2026-12-31T12:00:00Z',
+  };
+  h.fetcher.mockImplementation(async (url) =>
+    response(String(url).endsWith('/me') ? { ...user, roles: ['attendee', 'organizer'] } : event),
+  );
+  const screen = await show(h);
+  await screen.findByText('Edit event');
+  await fireEvent.changeText(screen.getByLabelText('Capacity'), '');
+  await fireEvent.changeText(screen.getByLabelText('Image URL'), '');
+  await fireEvent.press(screen.getAllByRole('button', { name: 'Remove' })[0]!);
+  await fireEvent.press(screen.getAllByRole('button', { name: 'Remove' })[0]!);
+  await fireEvent.press(screen.getByRole('button', { name: 'Save' }));
+  const patch = h.fetcher.mock.calls.find(([, init]) => init?.method === 'PATCH');
+  expect(JSON.parse(String(patch?.[1]?.body))).toMatchObject({
+    capacity: null,
+    imageUrl: null,
+    registrationOpensAt: null,
+    registrationClosesAt: null,
+  });
+});
+
+test('history displays the affected entity supplied by the API', async () => {
+  jest.spyOn(Linking, 'getInitialURL').mockResolvedValue('biletflow://organizer/events/event-1');
+  const h = harness(tokenResponse);
+  h.fetcher.mockImplementation(async (url) =>
+    response(
+      String(url).endsWith('/me')
+        ? { ...user, roles: ['attendee', 'organizer'] }
+        : String(url).includes('/history')
+          ? {
+              data: [
+                {
+                  id: 'audit-1',
+                  createdAt: '2026-11-25T10:00:00Z',
+                  actorName: 'Organizer',
+                  action: 'order.refunded',
+                  entityType: 'order',
+                  entityId: 'order-42',
+                  description: 'Refunded',
+                },
+              ],
+              total: 1,
+            }
+          : { ...showEvent, organizerId: user.id },
+    ),
+  );
+  const screen = await show(h);
+  await screen.findByText('Edit event');
+  await fireEvent.press(screen.getByRole('button', { name: 'History' }));
+  await screen.findByText('order · order-42');
+});
+
+test('support filters use compact selection dialogs and preserve the event context', async () => {
+  jest.spyOn(Linking, 'getInitialURL').mockResolvedValue('biletflow://support?eventId=event-1');
+  const h = harness(tokenResponse);
+  h.fetcher.mockImplementation(async (url) =>
+    response(String(url).endsWith('/me') ? user : { data: [], total: 0 }),
+  );
+  const screen = await show(h);
+  await screen.findByText('No results');
+  expect(screen.queryByRole('radio', { name: 'Resolved' })).toBeNull();
+  await fireEvent.press(screen.getByRole('button', { name: 'Status' }));
+  await fireEvent.press(screen.getByRole('radio', { name: 'resolved' }));
+  expect(screen.getByRole('button', { name: 'Status' })).toHaveAccessibilityValue({
+    text: 'resolved',
+  });
+  expect(screen.queryByRole('radio', { name: 'resolved' })).toBeNull();
+  await fireEvent.press(screen.getByRole('button', { name: 'Handled by' }));
+  await fireEvent.press(screen.getByRole('radio', { name: 'platform' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Apply' }));
+  const calls = h.fetcher.mock.calls.filter(([url]) => String(url).includes('/support/cases'));
+  const last = new URL(String(calls.at(-1)?.[0]));
+  expect(Object.fromEntries(last.searchParams)).toMatchObject({
+    eventId: 'event-1',
+    status: 'resolved',
+    handledBy: 'platform',
+    page: '1',
+  });
+});
+
+test('admin payment search sends its query to the payment endpoint', async () => {
+  jest.spyOn(Linking, 'getInitialURL').mockResolvedValue('biletflow://admin');
+  const h = harness(tokenResponse);
+  h.fetcher.mockImplementation(async (url) =>
+    response(
+      String(url).endsWith('/me')
+        ? { ...user, roles: ['attendee', 'platform_admin'] }
+        : { data: [], total: 0 },
+    ),
+  );
+  const screen = await show(h);
+  await screen.findByText('No results');
+  await fireEvent.press(screen.getByRole('button', { name: 'Payments' }));
+  await fireEvent.changeText(
+    screen.getAllByLabelText('Search').find((node) => node.props.onChangeText)!,
+    'ORD-42',
+  );
+  await fireEvent.press(screen.getByRole('button', { name: 'Search' }));
+  expect(
+    h.fetcher.mock.calls.some(([url]) => String(url).includes('/admin/payments?q=ORD-42')),
+  ).toBe(true);
+});
+
+test('seat map scrolls horizontally and distinguishes held, sold and unavailable seats', async () => {
+  const onChange = jest.fn();
+  const statuses = ['available', 'held', 'sold', 'unavailable'] as const;
+  const map = {
+    eventId: 'e',
+    venueId: 'v',
+    venueName: 'Hall',
+    sections: [
+      {
+        name: 'Main',
+        rows: [
+          {
+            label: 'A',
+            seats: statuses.map((status, i) => ({
+              id: `seat-${i}`,
+              number: i + 1,
+              priceCategory: 'standard',
+              status,
+              accessible: false,
+              price: { amount: 10000, currency: 'KZT' },
+            })),
+          },
+        ],
+      },
+    ],
+  } as Model<'SeatMap'>;
+  const screen = await render(
+    <LanguageContext.Provider value="en">
+      <SeatPicker map={map} selected={[]} onChange={onChange} />
+    </LanguageContext.Provider>,
+  );
+  expect(screen.getByLabelText('Seating: Main').props.horizontal).toBe(true);
+  const seats = statuses.map((_, i) =>
+    screen.getByRole('button', { name: new RegExp(`Main A ${i + 1},`) }),
+  );
+  const colors = seats.map((seat) => StyleSheet.flatten(seat.props.style).backgroundColor);
+  expect(new Set(colors).size).toBe(4);
+  await fireEvent.press(seats[2]!);
+  expect(onChange).not.toHaveBeenCalled();
+  await fireEvent.press(seats[0]!);
+  expect(onChange).toHaveBeenCalledWith(['seat-0']);
+});
+
+test('private-event calendar downloads keep the invitation token', async () => {
+  const h = harness();
+  await h.session.restore();
+  bindSession(h.session);
+  h.fetcher.mockResolvedValueOnce(new Response('BEGIN:VCALENDAR'));
+  const file = {
+    uri: 'file:///cache/event.ics',
+    write: jest.fn(),
+    delete: jest.fn(),
+    exists: true,
+  };
+  (File as unknown as jest.Mock).mockImplementation(() => file);
+  jest.mocked(Sharing.shareAsync).mockResolvedValueOnce(undefined);
+  const event = {
+    ...showEvent,
+    calendarLinks: {
+      ics: 'https://api.example.test/v1/events/event-1/calendar.ics',
+      google: 'https://calendar.google.com/',
+      outlook: 'https://outlook.live.com/',
+    },
+  } as Model<'Event'>;
+  const screen = await render(
+    <LanguageContext.Provider value="en">
+      <Calendar event={event} campaign="private-invite" />
+    </LanguageContext.Provider>,
+  );
+  await fireEvent.press(screen.getByRole('button', { name: '.ics' }));
+  expect(h.fetcher).toHaveBeenCalledWith(
+    'https://api.example.test/v1/events/event-1/calendar.ics?campaignToken=private-invite',
+    expect.anything(),
+  );
 });

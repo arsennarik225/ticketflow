@@ -12,15 +12,16 @@ import {
 } from 'react';
 import {
   Image,
+  Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Switch,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
 import { colors } from '../components/Screen';
@@ -66,6 +67,12 @@ function content(children: ReactNode): ReactNode {
 }
 export function Section({ children, variant = '', role, ...props }: NativeProps) {
   const names = variant.split(' ');
+  if (names.includes('seat-section'))
+    return (
+      <ScrollView horizontal nestedScrollEnabled accessibilityLabel={props['aria-label']}>
+        <View style={styles.section}>{content(children)}</View>
+      </ScrollView>
+    );
   return (
     <View
       accessibilityRole={role === 'alert' ? 'alert' : undefined}
@@ -75,7 +82,9 @@ export function Section({ children, variant = '', role, ...props }: NativeProps)
       style={[
         styles.section,
         names.includes('card') && styles.card,
-        names.some((name) => ['actions', 'seat-row', 'tabs'].includes(name)) && styles.row,
+        names.some((name) => ['actions', 'tabs'].includes(name)) && styles.row,
+        names.includes('seat-row') && styles.seatRow,
+        names.includes('seat-label') && styles.seatLabel,
         names.includes('notice') && styles.notice,
       ]}
     >
@@ -439,22 +448,53 @@ export function Choice(props: InputProps) {
     ? requested
     : (options[0]?.props.value ?? '');
   const { value, change, disabled, label } = useField(props, initial);
+  const [open, setOpen] = useState(false);
+  const t = useT();
+  const selected = options.find((option) => option.props.value === value);
   return (
-    <View style={styles.picker}>
-      <Picker
+    <View>
+      <Pressable
+        accessibilityRole="button"
         accessibilityLabel={label}
-        selectedValue={value}
-        enabled={!disabled}
-        onValueChange={(next) => change(String(next))}
+        accessibilityValue={{ text: labelText(selected?.props.children) }}
+        accessibilityState={{ disabled, expanded: open }}
+        disabled={disabled}
+        onPress={() => setOpen(true)}
+        style={[styles.dropdown, disabled && styles.disabled]}
       >
-        {options.map((option) => (
-          <Picker.Item
-            key={option.props.value}
-            value={option.props.value}
-            label={labelText(option.props.children)}
-          />
-        ))}
-      </Picker>
+        <Text style={styles.dropdownText}>{labelText(selected?.props.children)}</Text>
+        <Text style={styles.text}>▾</Text>
+      </Pressable>
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <View accessibilityViewIsModal style={styles.dropdownPanel}>
+            <Text accessibilityRole="header" style={styles.heading}>
+              {label}
+            </Text>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {options.map((option) => (
+                <Pressable
+                  key={option.props.value}
+                  accessibilityRole="radio"
+                  accessibilityLabel={labelText(option.props.children)}
+                  accessibilityState={{ checked: option.props.value === value }}
+                  onPress={() => {
+                    change(option.props.value);
+                    setOpen(false);
+                  }}
+                  style={styles.dropdownOption}
+                >
+                  <Text style={styles.dropdownText}>{labelText(option.props.children)}</Text>
+                  <Text style={styles.text}>{option.props.value === value ? '✓' : ''}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+            <NativeButton type="button" onPress={() => setOpen(false)}>
+              {t('Cancel')}
+            </NativeButton>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -473,6 +513,11 @@ export function NativeButton({
 }) {
   const form = useContext(FormContext);
   const unavailable = useContext(DisabledContext) || disabled;
+  const names = (props.variant || '').split(' ');
+  const seat = names.includes('seat');
+  const seatStatus = names.find((name) =>
+    ['available', 'held', 'sold', 'unavailable'].includes(name),
+  );
   return (
     <Pressable
       accessibilityRole="button"
@@ -481,12 +526,19 @@ export function NativeButton({
       disabled={!!unavailable}
       style={[
         styles.button,
+        seat && styles.seat,
+        seat && seatStatus === 'available' && styles.seatAvailable,
+        seat && seatStatus === 'held' && styles.seatHeld,
+        seat && seatStatus === 'sold' && styles.seatSold,
+        seat && seatStatus === 'unavailable' && styles.seatUnavailable,
         props['aria-pressed'] && styles.selected,
-        unavailable && styles.disabled,
+        unavailable && !seat && styles.disabled,
       ]}
       onPress={onPress || (type !== 'button' ? form?.submit : undefined)}
     >
-      <Text style={styles.buttonText}>{children}</Text>
+      <Text style={[styles.buttonText, seat && !props['aria-pressed'] && styles.seatText]}>
+        {children}
+      </Text>
     </Pressable>
   );
 }
@@ -543,6 +595,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  seatRow: { flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: 8 },
+  seatLabel: { width: 40, flexShrink: 0, marginBottom: 0 },
   text: { color: colors.text, fontSize: 16, lineHeight: 23, flexShrink: 1 },
   progress: { height: 12, borderRadius: 6, backgroundColor: colors.border, overflow: 'hidden' },
   title: { color: colors.text, fontSize: 28, fontWeight: '700' },
@@ -559,7 +613,37 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   multiline: { minHeight: 110, textAlignVertical: 'top' },
-  picker: { borderWidth: 1, borderColor: colors.border, borderRadius: 8 },
+  dropdown: {
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#fff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  dropdownText: { flex: 1, color: colors.text, fontSize: 16 },
+  modalBackdrop: { flex: 1, backgroundColor: '#17233A99', justifyContent: 'center', padding: 24 },
+  dropdownPanel: {
+    backgroundColor: '#fff',
+    padding: 20,
+    gap: 12,
+    borderRadius: 16,
+    maxHeight: '80%',
+    width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
+  },
+  dropdownOption: {
+    minHeight: 48,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
   button: {
     minHeight: 44,
     paddingVertical: 12,
@@ -570,6 +654,19 @@ const styles = StyleSheet.create({
   },
   buttonText: { color: '#fff', fontSize: 15, fontWeight: '600', textAlign: 'center' },
   selected: { backgroundColor: '#14683E' },
+  seat: {
+    minWidth: 52,
+    minHeight: 48,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+  },
+  seatAvailable: { backgroundColor: '#E4F3E8', borderColor: '#206647' },
+  seatHeld: { backgroundColor: '#FFF0C2', borderColor: '#886300' },
+  seatSold: { backgroundColor: '#F8DCE0', borderColor: '#9F2229' },
+  seatUnavailable: { backgroundColor: '#E1E5EB', borderColor: '#526078' },
+  seatText: { color: colors.text },
   disabled: { opacity: 0.45 },
   cover: { width: '100%', height: 180, borderRadius: 12 },
   notice: { padding: 12, backgroundColor: '#FFF3D6', borderRadius: 8 },

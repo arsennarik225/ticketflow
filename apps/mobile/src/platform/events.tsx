@@ -139,12 +139,19 @@ export function EventsPage() {
     </>
   );
 }
-export function Calendar({ event }: { event: Event }) {
+export function Calendar({ event, campaign }: { event: Event; campaign?: string }) {
   const t = useT();
   return event.calendarLinks ? (
     <Section variant="actions">
       <Inline>{t('Calendar')}:</Inline>
-      <Action run={() => download(`/events/${event.id}/calendar.ics`, `event-${event.id}.ics`)}>
+      <Action
+        run={() =>
+          download(
+            `/events/${event.id}/calendar.ics${query({ campaignToken: campaign })}`,
+            `event-${event.id}.ics`,
+          )
+        }
+      >
         .ics
       </Action>
       <ExternalLink target="_blank" rel="noreferrer" href={event.calendarLinks.google}>
@@ -156,7 +163,7 @@ export function Calendar({ event }: { event: Event }) {
     </Section>
   ) : null;
 }
-export function EventDetails({ event }: { event: Event }) {
+export function EventDetails({ event, campaign }: { event: Event; campaign?: string }) {
   return (
     <>
       <Title>{event.title}</Title>
@@ -169,7 +176,7 @@ export function EventDetails({ event }: { event: Event }) {
       </Paragraph>
       {event.imageUrl && <CoverImage variant="event-image" src={event.imageUrl} alt="" />}
       <Paragraph variant="pre-wrap">{event.description}</Paragraph>
-      <Calendar event={event} />
+      <Calendar event={event} campaign={campaign} />
     </>
   );
 }
@@ -192,11 +199,15 @@ export function SeatPicker({
         {t('Sold')} S · {t('Unavailable')} × · {t('Accessible')} ♿
       </Paragraph>
       {map.sections?.map((section) => (
-        <Section variant="seat-section" key={section.name}>
+        <Section
+          variant="seat-section"
+          key={section.name}
+          aria-label={`${t('Seating')}: ${section.name}`}
+        >
           <Heading>{section.name}</Heading>
           {section.rows?.map((row) => (
             <Section variant="seat-row" key={row.label}>
-              <Inline>{row.label}</Inline>
+              <Section variant="seat-label">{row.label}</Section>
               {row.seats?.map((seat) => {
                 const chosen = selected.includes(seat.id);
                 const status = {
@@ -253,6 +264,9 @@ export function EventPage() {
   const [params] = useSearchParams();
   const campaign = params.get('campaign') || undefined;
   const resource = useResource<Event>(`/events/${id}${query({ campaignToken: campaign })}`);
+  useEffect(() => {
+    if (campaign && resource.data) flowStorage.setItem(`event-campaign:${id}`, campaign);
+  }, [campaign, id, resource.data]);
   return (
     <Resource value={resource}>
       {(event) => <EventPurchase key={id} event={event} campaign={campaign} />}
@@ -300,7 +314,7 @@ function EventPurchase({ event, campaign }: { event: Event; campaign?: string })
       </Link>
       <Section variant="two-col">
         <Section>
-          <EventDetails event={event} />
+          <EventDetails event={event} campaign={campaign} />
           {event.refundPolicy && (
             <>
               <Heading>{t('Refund policy')}</Heading>
@@ -651,7 +665,7 @@ export function TicketCard({ ticket, showQr = false }: { ticket: Ticket; showQr?
 export function TicketsPage() {
   const t = useT();
   const [page, setPage] = useState(1);
-  const resource = useResource<Page<Order>>(`/me/orders?page=${page}`);
+  const resource = useResource<Page<Ticket>>(`/me/tickets?page=${page}`);
   return (
     <>
       <Title>{t('My tickets')}</Title>
@@ -659,15 +673,11 @@ export function TicketsPage() {
         {(data) => (
           <>
             <Section variant="grid">
-              {data.data
-                .flatMap((order) => order.tickets || [])
-                .map((ticket) => (
-                  <TicketCard key={ticket.id} ticket={ticket} />
-                ))}
+              {data.data.map((ticket) => (
+                <TicketCard key={ticket.id} ticket={ticket} />
+              ))}
             </Section>
-            {!data.data.some((order) => order.tickets?.length) && (
-              <Paragraph variant="empty">{t('No results')}</Paragraph>
-            )}
+            {!data.data.length && <Paragraph variant="empty">{t('No results')}</Paragraph>}
             <Pager page={page} total={data.total} onChange={setPage} />
           </>
         )}
@@ -718,7 +728,12 @@ export function OrderPage() {
     }
   })();
   const order = resource.data || (!user ? cached : null);
-  const event = useResource<Event>(order ? `/events/${order.eventId}` : null);
+  const campaign = order
+    ? flowStorage.getItem(`event-campaign:${order.eventId}`) || undefined
+    : undefined;
+  const event = useResource<Event>(
+    order ? `/events/${order.eventId}${query({ campaignToken: campaign })}` : null,
+  );
   if (!order) return <Resource value={resource}>{() => null}</Resource>;
   return (
     <>
@@ -737,7 +752,7 @@ export function OrderPage() {
           {t('Payment simulation — no real money is charged.')}
         </Paragraph>
       )}
-      {event.data && <Calendar event={event.data} />}
+      {event.data && <Calendar event={event.data} campaign={campaign} />}
       <Section variant="actions">
         <SupportLink orderId={order.id} />
       </Section>

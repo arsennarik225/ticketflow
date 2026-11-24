@@ -175,6 +175,17 @@ export function AccountPage() {
             }}
           />
           <Heading style={{ marginTop: '2rem' }}>{t('Organizer profile')}</Heading>
+          {profile.data && (
+            <Section>
+              <Heading>{t('Payout account (simulation)')}</Heading>
+              <Paragraph>
+                {profile.data.payoutAccount?.maskedAccount || t('Not connected')}
+              </Paragraph>
+              <Paragraph>
+                {t('Status')}: {t(profile.data.payoutAccount?.status || 'Not connected')}
+              </Paragraph>
+            </Section>
+          )}
           {profile.loading ? (
             <Paragraph>{t('Loading…')}</Paragraph>
           ) : (
