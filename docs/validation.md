@@ -1,5 +1,34 @@
 # Validation — 29 October 2026
 
+## Authentication email feedback — 25 November 2026
+
+Prepared against `main` at `05cfa6a4151eb0fa875726309b5c60b98b9bdec8` plus
+the email-feedback changes in this handoff. The handoff is an uncommitted patch;
+the recipient's review and any later verification must identify their actual commit.
+
+- Web recovery accepts the API's empty `202 Accepted` response, while JSON-bearing
+  responses remain supported and unexpected empty JSON responses still fail.
+- Registration shows the inbox notice after success. Recovery shows a neutral
+  account-independent response after acceptance, in English, Russian and Kazakh.
+  Pending/failed requests do not show success, and ordinary forms keep `Saved`.
+- Node 22: **42 web tests passed**, TypeScript/production build passed, generated
+  API types unchanged, and `npm audit` reported **0 vulnerabilities**.
+  `happy-dom` is a test-only dependency for real form interaction tests.
+- Python 3.12/PostgreSQL 16: **201 API tests passed** on a separate disposable
+  database. New regressions simulate SMTP connection and send failures and verify
+  that the order persists, payment stays simulated/succeeded, the ticket remains
+  valid, the PDF is downloadable, and confirmation retries create no second order.
+
+Actual external SMTP/Gmail delivery was **not run**. Before claiming that result,
+record the tested commit, date, sender/provider configuration without secrets, and
+expected/actual outcomes for registration/verification, password reset, and ticket
+email/PDF delivery. Check the received links and PDF, not only the HTTP response.
+An accepted recovery request or stored notification is not a delivery receipt.
+
+The mobile application and real-device behavior were not changed or revalidated
+for this web/email patch. SMTP errors remain logged after commit; no background
+retry queue or production payment processing was added.
+
 ## Browser acceptance — 21 November 2026
 
 First hand-executed walkthrough of the web client against a locally running
@@ -113,3 +142,14 @@ still inherit low-severity `deepmerge` reports; Expo CLI inherits a high-severit
 and its parent-package reports. These are development-tool dependencies. No incompatible
 Zod/Expo major-version override or forced SDK downgrade was applied to hide the advisories.
 Track the [Zod advisory](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5) before production release.
+
+25 November 2026
+### Manual Gmail SMTP & Recipient Verification — 25 November 2026
+
+- **Roles:** Initial patch prepared in Arsen's Codex session; manual SMTP/Gmail delivery checks and review performed by Zhibek (`ALN-MVP-email-feedback`).
+- **Automated checks repeated:** `npm run build` passed; `docker compose run --rm api pytest tests/test_mail_transport.py` — **5 passed**.
+- **Real Gmail SMTP delivery (`smtp.gmail.com:587`, STARTTLS):**
+  - **Registration:** **Pass** — inbox notice shown only after submission; verification email received in Gmail and account confirmed via link.
+  - **Password recovery:** **Pass** — neutral response shown after submission; recovery email received in Gmail, password reset completed, login verified with the new password.
+  - **Ticket purchase:** **Pass** — order completed, ticket email received in Gmail with valid attachment/details.
+  - **Frontend validation / error handling:** **Pass** — invalid/failed requests do not trigger false success notices and preserve user input for retry.

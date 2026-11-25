@@ -42,6 +42,11 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' | 'forgot' | 're
       <Form
         key={mode}
         submit={mode === 'forgot' ? 'Send reset link' : title}
+        successMessage={
+          mode === 'forgot'
+            ? 'If an account exists for this email, check your inbox for password reset instructions.'
+            : undefined
+        }
         fields={[
           ...(mode === 'register'
             ? [{ name: 'fullName', label: 'Full name', required: true }]
@@ -102,8 +107,8 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' | 'forgot' | 're
           }
         }}
       >
-        {(params.has('registered') || mode === 'register' || mode === 'forgot') && (
-          <p>{t('Check your inbox.')}</p>
+        {mode === 'login' && params.get('registered') === '1' && (
+          <p role="status">{t('Check your inbox.')}</p>
         )}
       </Form>
       <div className="actions">
