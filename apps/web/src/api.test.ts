@@ -23,6 +23,34 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 describe('API client', () => {
+  it('accepts an empty 202 response from password recovery', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 202 })),
+    );
+    await expect(
+      api('/auth/password/forgot', {
+        method: 'POST',
+        body: JSON.stringify({ email: 'attendee@example.test' }),
+      }),
+    ).resolves.toBeUndefined();
+  });
+  it('preserves JSON returned by an accepted request', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ status: 'pending' }, { status: 202 })),
+    );
+    await expect(api('/me/identity-verification', { method: 'POST' })).resolves.toEqual({
+      status: 'pending',
+    });
+  });
+  it('still rejects an unexpected empty JSON response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 200 })),
+    );
+    await expect(api('/me')).rejects.toBeInstanceOf(SyntaxError);
+  });
   it('rotates one refresh token for concurrent expired requests, then retries with the new access token', async () => {
     saveSession(tokens);
     let refreshes = 0;

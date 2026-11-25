@@ -89,11 +89,13 @@ export function Form({
   fields,
   onSubmit,
   submit = 'Save',
+  successMessage = 'Saved',
   children,
 }: {
   fields: Field[];
   onSubmit: (values: FormData) => Promise<unknown>;
   submit?: string;
+  successMessage?: string;
   children?: ReactNode;
 }) {
   const t = useT();
@@ -168,7 +170,7 @@ export function Form({
         </button>
         {saved && (
           <span className="success-text" role="status">
-            {t('Saved')}
+            {t(successMessage)}
           </span>
         )}
       </fieldset>

@@ -93,7 +93,9 @@ export async function request(
 }
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await request(path, init);
-  return response.status === 204 ? (undefined as T) : response.json();
+  if (response.status === 204) return undefined as T;
+  const body = await response.text();
+  return !body && response.status === 202 ? (undefined as T) : JSON.parse(body);
 }
 export function send<T>(path: string, body?: unknown, method = 'POST', key?: string) {
   return api<T>(path, {
